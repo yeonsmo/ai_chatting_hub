@@ -15,6 +15,25 @@ TEXT_EXTENSIONS = {
 MAX_EXTRACT_CHARS = 200_000  # DB에 저장할 추출 텍스트 상한
 
 
+class UploadTooLarge(Exception):
+    """업로드가 허용 크기를 초과."""
+
+
+async def read_capped(upload, max_bytes: int) -> bytes:
+    """업로드를 청크 단위로 읽되 max_bytes 초과 시 즉시 중단(메모리 고갈 방지)."""
+    chunks = []
+    total = 0
+    while True:
+        chunk = await upload.read(65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise UploadTooLarge()
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def ensure_upload_dir() -> str:
     path = os.path.abspath(settings.upload_dir)
     os.makedirs(path, exist_ok=True)

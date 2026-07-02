@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +9,12 @@ from app.models import User, UserRole
 
 security = HTTPBearer()
 
+# 비밀번호 강제 변경 중인 계정이 예외적으로 접근 가능한 경로(접미사 매칭)
+_RESET_ALLOWED_SUFFIXES = ("/auth/change-password", "/auth/me", "/auth/logout")
+
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -21,7 +25,7 @@ async def get_current_user(
     )
     try:
         payload = jwt.decode(credentials.credentials, settings.secret_key, algorithms=[settings.algorithm])
-        username: str = payload.get("sub")
+        username = payload.get("sub")
         if not username:
             raise exc
     except JWTError:
@@ -32,6 +36,13 @@ async def get_current_user(
 
     if not user or not user.is_active:
         raise exc
+    # 비밀번호 변경 후 발급 전 토큰 무효화 (누락 클레임은 0으로 간주 → 기존 토큰 호환)
+    if payload.get("ver", 0) != (user.token_version or 0):
+        raise exc
+
+    # 비밀번호 강제 변경이 필요한 계정은 변경 관련 경로 외 접근 차단(서버측 강제)
+    if user.force_password_reset and not request.url.path.rstrip("/").endswith(_RESET_ALLOWED_SUFFIXES):
+        raise HTTPException(status_code=403, detail="비밀번호를 먼저 변경해야 합니다")
     return user
 
 

@@ -1,16 +1,28 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.file_utils import new_stored_name, stored_path, extract_text
+from app.file_utils import new_stored_name, stored_path, extract_text, read_capped, UploadTooLarge
 from app.models import User, UserRole, Attachment
 from app.schemas import AttachmentResponse
 
 router = APIRouter(prefix="/files", tags=["files"])
+
+
+async def read_upload_or_413(request: Request, file: UploadFile) -> bytes:
+    """Content-Length 사전 거부 + 청크 스트리밍 캡으로 안전하게 업로드 본문을 읽는다."""
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    cl = request.headers.get("content-length")
+    if cl and cl.isdigit() and int(cl) > max_bytes + 65536:
+        raise HTTPException(status_code=413, detail=f"파일이 너무 큽니다 (최대 {settings.max_upload_mb}MB)")
+    try:
+        return await read_capped(file, max_bytes)
+    except UploadTooLarge:
+        raise HTTPException(status_code=413, detail=f"파일이 너무 큽니다 (최대 {settings.max_upload_mb}MB)")
 
 
 def to_response(att: Attachment) -> AttachmentResponse:
@@ -26,15 +38,13 @@ def to_response(att: Attachment) -> AttachmentResponse:
 
 @router.post("/upload", response_model=AttachmentResponse)
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """어떤 형식이든 업로드 허용. 텍스트/PDF는 내용을 추출해 모델 컨텍스트로 사용."""
-    max_bytes = settings.max_upload_mb * 1024 * 1024
-    data = await file.read()
-    if len(data) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"파일이 너무 큽니다 (최대 {settings.max_upload_mb}MB)")
+    data = await read_upload_or_413(request, file)
     if not data:
         raise HTTPException(status_code=400, detail="빈 파일은 업로드할 수 없습니다")
 

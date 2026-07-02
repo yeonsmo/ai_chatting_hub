@@ -13,8 +13,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 480
 
     allowed_ips: str = "192.168.219.0/24,127.0.0.1"
-    # X-Forwarded-For를 신뢰할 프록시(직접 접속 IP가 여기 속할 때만 XFF 사용)
-    trusted_proxies: str = "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    # X-Forwarded-For를 신뢰할 프록시(직접 접속 IP가 여기 속할 때만 XFF 사용).
+    # 기본값은 리버스 프록시가 접속해 오는 루프백만 신뢰한다.
+    # ⚠ 이 대역이 ALLOWED_IPS를 포함(상위집합)하면 XFF 위조로 화이트리스트를
+    #    우회당할 수 있으므로, 실제 프록시 주소로 최소화해서 설정하세요.
+    trusted_proxies: str = "127.0.0.1,::1"
 
     anthropic_api_key: str = ""
     gabia_api_key: str = ""

@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.config import settings
@@ -7,7 +7,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.file_utils import new_stored_name, stored_path, extract_text
 from app.models import User, Project, Conversation, Attachment
-from app.routers.files import to_response as attachment_response
+from app.routers.files import to_response as attachment_response, read_upload_or_413
 from app.schemas import ProjectCreate, ProjectUpdate, ProjectResponse, AttachmentResponse
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -140,16 +140,14 @@ async def delete_project(
 @router.post("/{project_id}/files", response_model=AttachmentResponse)
 async def upload_project_file(
     project_id: int,
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     project = await _get_own_project(project_id, current_user, db)
 
-    max_bytes = settings.max_upload_mb * 1024 * 1024
-    data = await file.read()
-    if len(data) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"파일이 너무 큽니다 (최대 {settings.max_upload_mb}MB)")
+    data = await read_upload_or_413(request, file)
     if not data:
         raise HTTPException(status_code=400, detail="빈 파일은 업로드할 수 없습니다")
 

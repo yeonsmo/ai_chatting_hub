@@ -51,8 +51,10 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
         for hop in reversed(hops):
             if not _in_networks(hop, self.trusted_networks):
                 return hop
-        # 전부 신뢰 프록시면 체인의 맨 앞이 원 클라이언트
-        return hops[0] if hops else peer
+        # 체인이 전부 신뢰 프록시면 비신뢰 클라이언트가 없다는 뜻.
+        # hops[0]은 클라이언트가 위조할 수 있으므로 신뢰하지 않고, 위조 불가한
+        # 실제 TCP 피어를 반환한다(화이트리스트 우회 방지).
+        return peer
 
     def is_allowed(self, ip: str) -> bool:
         return _in_networks(ip, self.allowed_networks)

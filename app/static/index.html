@@ -783,7 +783,9 @@ async function changePassword(){
   if(nw!==cf){ err.textContent='새 비밀번호가 일치하지 않습니다'; err.classList.remove('hidden'); return; }
   if(nw.length<8){ err.textContent='비밀번호는 8자 이상이어야 합니다'; err.classList.remove('hidden'); return; }
   try {
-    await api('POST','/auth/change-password',{current_password:cur,new_password:nw});
+    const res=await api('POST','/auth/change-password',{current_password:cur,new_password:nw});
+    // 비밀번호 변경으로 기존 토큰이 무효화되므로 서버가 준 새 토큰으로 교체
+    if(res&&res.access_token){ token=res.access_token; localStorage.setItem('token',token); }
     ok.textContent='변경 완료! 잠시 후 이동합니다…'; ok.classList.remove('hidden');
     setTimeout(()=>initMain(), 900);
   } catch(e){ err.textContent=e.message; err.classList.remove('hidden'); }

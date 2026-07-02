@@ -10,7 +10,7 @@ from app.dependencies import get_admin_user
 from app.models import User, ModelRoute, Integration, Skill
 from app.providers import PROVIDERS
 from app.roles import ROLE_LEVELS, ROLE_LABELS_KO
-from app.skills_runtime import parse_params_schema
+from app.skills_runtime import parse_params_schema, _validate_public_host
 from app.schemas import (
     ModelRouteUpsert, ModelRouteResponse,
     IntegrationCreate, IntegrationUpdate, IntegrationResponse,
@@ -20,6 +20,30 @@ from app.schemas import (
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 SKILL_NAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{1,63}$")
+
+
+def _validate_base_url(base_url: str) -> str:
+    from urllib.parse import urlparse
+    base = base_url.strip()
+    if not base.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="base_url은 http(s)://로 시작해야 합니다")
+    host = urlparse(base).hostname or ""
+    try:
+        _validate_public_host(host)  # 사설/loopback/링크로컬이면 예외
+    except ValueError as e:
+        # 해석 실패는 허용(내부 split-DNS 등) — 실제 호출 시 런타임이 재검증한다.
+        if "내부" in str(e) or "사설" in str(e):
+            raise HTTPException(status_code=400, detail="사설/내부 대역 주소는 연동 대상으로 등록할 수 없습니다")
+    return base[:500]
+
+
+def _validate_body_template(body_template):
+    if body_template is None:
+        return
+    try:
+        json.loads(body_template)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="body_template은 유효한 JSON이어야 합니다")
 
 
 @router.get("/meta")
@@ -149,9 +173,7 @@ async def create_integration(
     current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    base = request.base_url.strip()
-    if not base.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="base_url은 http(s)://로 시작해야 합니다")
+    base = _validate_base_url(request.base_url)
     if request.auth_type not in ("bearer", "header", "query", "none"):
         raise HTTPException(status_code=400, detail="auth_type은 bearer/header/query/none 중 하나여야 합니다")
     integ = Integration(
@@ -187,10 +209,7 @@ async def update_integration(
     if request.kind is not None:
         integ.kind = request.kind.strip()[:50] or integ.kind
     if request.base_url is not None:
-        base = request.base_url.strip()
-        if not base.startswith(("http://", "https://")):
-            raise HTTPException(status_code=400, detail="base_url은 http(s)://로 시작해야 합니다")
-        integ.base_url = base[:500]
+        integ.base_url = _validate_base_url(request.base_url)
     if request.auth_type is not None:
         if request.auth_type not in ("bearer", "header", "query", "none"):
             raise HTTPException(status_code=400, detail="잘못된 auth_type")
@@ -276,6 +295,7 @@ async def create_skill(
         raise HTTPException(status_code=400, detail="스킬 이름은 영문으로 시작하는 영문/숫자/_/- 2~64자여야 합니다")
     if not request.title.strip() or not request.description.strip():
         raise HTTPException(status_code=400, detail="표시 이름과 설명을 입력해주세요")
+    _validate_body_template(request.body_template)
     await _validate_skill_common(request, db)
     exists = await db.scalar(select(Skill.id).where(Skill.name == name))
     if exists:
@@ -309,6 +329,7 @@ async def update_skill(
     skill = result.scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="스킬을 찾을 수 없습니다")
+    _validate_body_template(request.body_template)
     await _validate_skill_common(request, db)
 
     if request.title is not None:

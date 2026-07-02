@@ -24,6 +24,8 @@ MIGRATION_STATEMENTS = [
     # v3: 역할 확장(담당자) + 멀티 프로바이더
     "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'manager'",
     'ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS extra TEXT',
+    # 보안: 비밀번호 변경 시 기존 토큰 무효화용 버전
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0',
 ]
 
 

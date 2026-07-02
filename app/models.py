@@ -23,6 +23,7 @@ class User(Base):
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
     is_active = Column(Boolean, default=True)
     force_password_reset = Column(Boolean, default=False)
+    token_version = Column(Integer, default=0, nullable=False)  # 증가 시 기존 JWT 전부 무효화
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 

@@ -292,8 +292,9 @@ async def _run_gemini(model_id: str, key: str, system_prompt: str | None, messag
         payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
+    # API 키는 쿼리스트링 대신 헤더로 전송(프록시/접근 로그에 키 노출 방지)
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-        r = await client.post(url, params={"key": key}, json=payload)
+        r = await client.post(url, headers={"x-goog-api-key": key}, json=payload)
         r.raise_for_status()
         data = r.json()
 
