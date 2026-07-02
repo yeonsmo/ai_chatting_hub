@@ -137,18 +137,25 @@ def _build_request(skill: Skill, integration: Integration, params: dict):
 
     headers = {"Accept": "application/json"}
     query: dict = {}
+    # 크로스-호스트 리다이렉트 시 제거해야 할 민감 헤더(자격증명) 키 집합
+    sensitive_headers: set[str] = set()
 
     if integration.auth_type == "bearer" and integration.credential:
         headers["Authorization"] = f"Bearer {integration.credential}"
+        sensitive_headers.add("authorization")
     elif integration.auth_type == "header" and integration.credential:
-        headers[integration.auth_key or "X-API-Key"] = integration.credential
+        name = integration.auth_key or "X-API-Key"
+        headers[name] = integration.credential
+        sensitive_headers.add(name.lower())
     elif integration.auth_type == "query" and integration.credential:
         query[integration.auth_key or "api_key"] = integration.credential
 
     if integration.extra_headers:
         try:
             for k, v in (json.loads(integration.extra_headers) or {}).items():
-                headers[str(k)[:100]] = str(v)[:500]
+                name = str(k)[:100]
+                headers[name] = str(v)[:500]
+                sensitive_headers.add(name.lower())  # 추가 헤더도 토큰일 수 있어 크로스-호스트 시 제거
         except (ValueError, TypeError, AttributeError):
             pass
 
@@ -169,12 +176,13 @@ def _build_request(skill: Skill, integration: Integration, params: dict):
     if skill.body_template and skill.method.upper() in ("POST", "PUT", "PATCH"):
         body = _render_json_body(skill.body_template, params)
 
-    return url, headers, query, body
+    return url, headers, query, body, sensitive_headers
 
 
 async def execute_skill(skill: Skill, integration: Integration, params: dict) -> str:
-    url, headers, query, body = _build_request(skill, integration, params)
+    url, headers, query, body, sensitive_headers = _build_request(skill, integration, params)
     timeout = max(3, min(skill.timeout_s or 20, 60))
+    origin_host = (urlparse(url).hostname or "").lower()
 
     # follow_redirects=False: 리다이렉트로 사설/메타데이터 대역에 도달하는 SSRF 우회를 차단.
     # 리다이렉트를 최대 3회까지 직접 따라가되 매 홉마다 대상 호스트를 재검증한다.
@@ -183,7 +191,11 @@ async def execute_skill(skill: Skill, integration: Integration, params: dict) ->
         current_url, current_method = url, method
         response = None
         for _ in range(4):
-            kwargs = {"headers": dict(headers), "params": query}
+            # 현재 대상 호스트가 최초 호스트와 다르면 자격증명 헤더를 제거(유출 방지)
+            hop_host = (urlparse(current_url).hostname or "").lower()
+            send_headers = {k: v for k, v in headers.items()
+                            if hop_host == origin_host or k.lower() not in sensitive_headers}
+            kwargs = {"headers": send_headers, "params": query}
             if body is not None and current_method in ("POST", "PUT", "PATCH"):
                 kwargs["content"] = body.encode()
                 kwargs["headers"]["Content-Type"] = "application/json"

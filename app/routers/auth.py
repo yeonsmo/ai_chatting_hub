@@ -20,7 +20,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # 리버스 프록시/공유 저장소(redis) 기반 리밋을 함께 두는 것을 권장.
 _LOGIN_FAILS: dict[str, list[float]] = {}
 _LOGIN_LOCK = threading.Lock()
-_FAIL_MAX = 10           # 윈도우 내 최대 실패 횟수
+_FAIL_MAX = 10           # (IP+계정) 조합 윈도우 내 최대 실패 횟수
+_IP_FAIL_MAX = 30        # IP 전체(계정 무관) 실패 상한 — 패스워드 스프레잉 차단
 _FAIL_WINDOW = 300.0     # 초
 # 존재하지 않는 사용자에서도 bcrypt를 돌려 응답 시간을 평준화(계정 열거 방지)
 _DUMMY_HASH = pwd_context.hash("timing-equalizer-not-a-real-password")
@@ -30,26 +31,39 @@ def _rl_key(ip: str, username: str) -> str:
     return f"{ip}|{username.lower()[:50]}"
 
 
-def _is_rate_limited(key: str) -> bool:
-    now = time.monotonic()
-    with _LOGIN_LOCK:
-        arr = [t for t in _LOGIN_FAILS.get(key, []) if now - t < _FAIL_WINDOW]
-        _LOGIN_FAILS[key] = arr
-        return len(arr) >= _FAIL_MAX
+def _ip_key(ip: str) -> str:
+    return f"ip|{ip}"
 
 
-def _record_login_fail(key: str) -> None:
+def _fails_within(key: str, now: float) -> list[float]:
+    arr = [t for t in _LOGIN_FAILS.get(key, []) if now - t < _FAIL_WINDOW]
+    _LOGIN_FAILS[key] = arr
+    return arr
+
+
+def _is_rate_limited(ip: str, username: str) -> bool:
+    """(IP+계정) 조합 한도 또는 IP 전체 한도 중 하나라도 초과하면 True."""
     now = time.monotonic()
     with _LOGIN_LOCK:
-        _LOGIN_FAILS.setdefault(key, []).append(now)
+        combo = _fails_within(_rl_key(ip, username), now)
+        ip_all = _fails_within(_ip_key(ip), now)
+        return len(combo) >= _FAIL_MAX or len(ip_all) >= _IP_FAIL_MAX
+
+
+def _record_login_fail(ip: str, username: str) -> None:
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        _LOGIN_FAILS.setdefault(_rl_key(ip, username), []).append(now)
+        _LOGIN_FAILS.setdefault(_ip_key(ip), []).append(now)
         if len(_LOGIN_FAILS) > 5000:  # 메모리 상한(오래된 항목 정리)
             for k in [k for k, v in _LOGIN_FAILS.items() if not v or now - v[-1] > _FAIL_WINDOW]:
                 _LOGIN_FAILS.pop(k, None)
 
 
-def _clear_login_fail(key: str) -> None:
+def _clear_login_fail(ip: str, username: str) -> None:
+    # 로그인 성공 시 해당 계정 조합만 초기화(같은 IP의 다른 실패 누적은 유지)
     with _LOGIN_LOCK:
-        _LOGIN_FAILS.pop(key, None)
+        _LOGIN_FAILS.pop(_rl_key(ip, username), None)
 
 
 def create_access_token(user: User) -> str:
@@ -65,8 +79,7 @@ def client_ip(request: Request) -> str:
 @router.post("/login", response_model=TokenResponse)
 async def login(request: LoginRequest, http_request: Request, db: AsyncSession = Depends(get_db)):
     ip = client_ip(http_request)
-    key = _rl_key(ip, request.username)
-    if _is_rate_limited(key):
+    if _is_rate_limited(ip, request.username):
         db.add(UsageLog(
             username=request.username[:50], action="login_failed",
             status="error", detail="로그인 시도 제한 초과", client_ip=ip,
@@ -85,7 +98,7 @@ async def login(request: LoginRequest, http_request: Request, db: AsyncSession =
         valid = False
 
     if not valid:
-        _record_login_fail(key)
+        _record_login_fail(ip, request.username)
         db.add(UsageLog(
             user_id=user.id if user else None,
             username=request.username[:50],
@@ -105,7 +118,7 @@ async def login(request: LoginRequest, http_request: Request, db: AsyncSession =
         await db.commit()
         raise HTTPException(status_code=403, detail="비활성화된 계정입니다")
 
-    _clear_login_fail(key)
+    _clear_login_fail(ip, user.username)
     db.add(UsageLog(
         user_id=user.id, username=user.username, action="login",
         client_ip=ip,
