@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HP Engineering AI Hub</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  .msg-content h1{font-size:1.4rem;font-weight:700;margin:.6rem 0}
+  .msg-content h2{font-size:1.2rem;font-weight:700;margin:.5rem 0}
+  .msg-content h3{font-size:1.05rem;font-weight:600;margin:.4rem 0}
+  .msg-content p{margin:.4rem 0;line-height:1.65}
+  .msg-content ul{list-style:disc;padding-left:1.4rem;margin:.4rem 0}
+  .msg-content ol{list-style:decimal;padding-left:1.4rem;margin:.4rem 0}
+  .msg-content li{margin:.2rem 0}
+  .msg-content code{background:#1e293b;padding:.1rem .35rem;border-radius:.3rem;font-family:monospace;font-size:.875em}
+  .msg-content pre{background:#1e293b;padding:1rem;border-radius:.6rem;overflow-x:auto;margin:.5rem 0}
+  .msg-content pre code{background:none;padding:0}
+  .msg-content blockquote{border-left:3px solid #3b82f6;padding-left:.9rem;color:#94a3b8;margin:.5rem 0}
+  .msg-content table{border-collapse:collapse;width:100%;margin:.5rem 0}
+  .msg-content th,.msg-content td{border:1px solid #334155;padding:.4rem .6rem;text-align:left}
+  .msg-content th{background:#1e293b}
+  .msg-content a{color:#60a5fa;text-decoration:underline}
+  ::-webkit-scrollbar{width:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:bounce 1.2s infinite}
+  .dot:nth-child(2){animation-delay:.2s}
+  .dot:nth-child(3){animation-delay:.4s}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-7px)}}
+</style>
+</head>
+<body class="bg-gray-900 text-gray-100 h-screen overflow-hidden">
+
+<!-- LOGIN -->
+<div id="loginPage" class="hidden fixed inset-0 flex items-center justify-center bg-gray-900 z-50">
+  <div class="bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl border border-gray-700">
+    <div class="text-center mb-7">
+      <div class="text-3xl font-bold text-white">HP Engineering</div>
+      <div class="text-gray-400 text-sm mt-1">AI Hub</div>
+    </div>
+    <div id="loginErr" class="hidden bg-red-900/40 border border-red-600 text-red-300 px-4 py-2.5 rounded-lg mb-4 text-sm"></div>
+    <div class="space-y-3">
+      <input id="loginUser" type="text" placeholder="사용자명"
+        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+        onkeydown="if(event.key==='Enter')login()">
+      <input id="loginPw" type="password" placeholder="비밀번호"
+        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+        onkeydown="if(event.key==='Enter')login()">
+      <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition">
+        로그인
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- FORCE PASSWORD RESET -->
+<div id="resetPage" class="hidden fixed inset-0 flex items-center justify-center bg-gray-900 z-50">
+  <div class="bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl border border-gray-700">
+    <div class="text-center mb-6">
+      <div class="text-xl font-bold text-white">비밀번호 변경 필요</div>
+      <div class="text-gray-400 text-sm mt-1">보안을 위해 새 비밀번호를 설정해 주세요</div>
+    </div>
+    <div id="resetErr" class="hidden bg-red-900/40 border border-red-600 text-red-300 px-4 py-2.5 rounded-lg mb-4 text-sm"></div>
+    <div id="resetOk" class="hidden bg-green-900/40 border border-green-600 text-green-300 px-4 py-2.5 rounded-lg mb-4 text-sm"></div>
+    <div class="space-y-3">
+      <input id="curPw" type="password" placeholder="현재 비밀번호"
+        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition">
+      <input id="newPw" type="password" placeholder="새 비밀번호 (8자 이상)"
+        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition">
+      <input id="confirmPw" type="password" placeholder="새 비밀번호 확인"
+        class="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+        onkeydown="if(event.key==='Enter')changePassword()">
+      <button onclick="changePassword()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition">
+        비밀번호 변경
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="mainPage" class="hidden flex h-screen">
+  <!-- Sidebar -->
+  <div class="w-60 bg-gray-800 border-r border-gray-700 flex flex-col flex-shrink-0">
+    <div class="p-3 border-b border-gray-700">
+      <button onclick="newChat()"
+        class="w-full flex items-center gap-2 justify-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-xl transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        새 대화
+      </button>
+    </div>
+
+    <div id="convList" class="flex-1 overflow-y-auto p-2 space-y-0.5"></div>
+
+    <div class="p-3 border-t border-gray-700 space-y-1.5">
+      <div id="adminBtn" class="hidden">
+        <button onclick="openAdmin()"
+          class="w-full flex items-center gap-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700 px-3 py-2 rounded-lg transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          관리자 패널
+        </button>
+      </div>
+      <div class="flex items-center justify-between px-1">
+        <div class="flex items-center gap-2 min-w-0">
+          <div id="avatar" class="w-7 h-7 bg-blue-600 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold"></div>
+          <span id="uname" class="text-sm text-gray-300 truncate"></span>
+        </div>
+        <button onclick="logout()" title="로그아웃" class="text-gray-500 hover:text-white transition flex-shrink-0">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Area -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <div id="msgArea" class="flex-1 overflow-y-auto px-4 py-6 space-y-5">
+      <div id="welcome" class="flex items-center justify-center h-full text-center">
+        <div>
+          <div class="text-5xl mb-4">💬</div>
+          <div class="text-xl font-medium text-gray-300">무엇을 도와드릴까요?</div>
+          <div class="text-gray-500 text-sm mt-2">새 대화를 시작하거나 이전 대화를 선택하세요</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="px-4 pb-4">
+      <div class="bg-gray-800 border border-gray-600 focus-within:border-blue-500 rounded-2xl transition">
+        <textarea id="input" rows="1" placeholder="메시지 입력... (Enter: 전송 / Shift+Enter: 줄바꿈)"
+          class="w-full bg-transparent px-4 pt-3.5 pb-2 text-white placeholder-gray-500 focus:outline-none resize-none text-sm"
+          oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
+        <div class="flex justify-between items-center px-3 pb-3">
+          <select id="modelSelect" onchange="onModelChange(this.value)"
+            class="text-xs bg-gray-700 border border-gray-600 text-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-500 cursor-pointer">
+            <optgroup label="— Claude (Anthropic)">
+              <option value="sonnet">Claude Sonnet 4.6</option>
+              <option value="opus">Claude Opus 4.6</option>
+              <option value="haiku">Claude Haiku 4.5</option>
+            </optgroup>
+            <optgroup label="— OpenAI (가비아)">
+              <option value="gpt-5-pro">GPT-5 Pro</option>
+              <option value="gpt-5">GPT-5</option>
+              <option value="o4-mini">o4-mini</option>
+              <option value="codex">GPT Codex</option>
+            </optgroup>
+            <optgroup label="— DeepSeek">
+              <option value="deepseek">DeepSeek R1</option>
+            </optgroup>
+            <optgroup label="— Google">
+              <option value="gemini">Gemini Flash</option>
+            </optgroup>
+            <optgroup label="— Alibaba">
+              <option value="qwen">Qwen3.5 122B</option>
+              <option value="qwen-plus">Qwen3.6 Plus</option>
+            </optgroup>
+            <optgroup label="— Meta">
+              <option value="llama">Llama 3.2 Vision</option>
+            </optgroup>
+            <optgroup label="— Moonshot">
+              <option value="kimi">Kimi K2</option>
+              <option value="kimi-think">Kimi K2 Think</option>
+            </optgroup>
+            <optgroup label="— 기타">
+              <option value="minimax">MiniMax M2</option>
+              <option value="sonar">Sonar Pro (웹검색)</option>
+              <option value="sonar-deep">Sonar Research</option>
+              <option value="glm">GLM-4.7</option>
+              <option value="mimo">MiMo Pro</option>
+            </optgroup>
+          </select>
+          <button id="sendBtn" onclick="sendMsg()"
+            class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white p-2 rounded-lg transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN MODAL -->
+<div id="adminModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-40 p-4">
+  <div class="bg-gray-800 border border-gray-700 rounded-2xl w-full max-w-3xl max-h-[88vh] flex flex-col shadow-2xl">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+      <div class="font-bold text-lg">관리자 패널</div>
+      <button onclick="closeAdmin()" class="text-gray-400 hover:text-white transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex border-b border-gray-700 px-2">
+      <button id="tabU" onclick="switchTab('users')"
+        class="px-5 py-3 text-sm font-medium border-b-2 border-blue-500 text-blue-400 transition">
+        사용자 관리
+      </button>
+      <button id="tabK" onclick="switchTab('keys')"
+        class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white transition">
+        API 키 관리
+      </button>
+    </div>
+
+    <!-- Users Tab -->
+    <div id="usersTab" class="flex-1 overflow-y-auto p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-medium text-sm text-gray-300">사용자 목록</div>
+        <button onclick="showUserForm()"
+          class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition">+ 사용자 추가</button>
+      </div>
+      <div id="userForm" class="hidden bg-gray-700 rounded-xl p-4 mb-4">
+        <div class="text-sm font-medium mb-3">새 사용자 생성</div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <input id="fUser" type="text" placeholder="사용자명"
+            class="bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+          <input id="fPw" type="password" placeholder="초기 비밀번호"
+            class="bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+          <input id="fEmail" type="email" placeholder="이메일 (선택)"
+            class="bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+          <select id="fRole" class="bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+            <option value="user">일반 사용자</option>
+            <option value="admin">관리자</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="createUser()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-1.5 rounded-lg transition">생성</button>
+          <button onclick="hideUserForm()" class="bg-gray-600 hover:bg-gray-500 text-white text-xs px-4 py-1.5 rounded-lg transition">취소</button>
+        </div>
+      </div>
+      <div id="userList" class="space-y-2"></div>
+    </div>
+
+    <!-- Keys Tab -->
+    <div id="keysTab" class="hidden flex-1 overflow-y-auto p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-medium text-sm text-gray-300">API 키 목록</div>
+        <button onclick="showKeyForm()"
+          class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg transition">+ API 키 추가</button>
+      </div>
+      <div id="keyForm" class="hidden bg-gray-700 rounded-xl p-4 mb-4">
+        <div class="text-sm font-medium mb-3">새 API 키 등록</div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <input id="kName" type="text" placeholder="키 이름 (예: Anthropic Main)"
+            class="bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+          <select id="kProvider" class="bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="other">기타</option>
+          </select>
+          <input id="kValue" type="password" placeholder="API 키 값"
+            class="col-span-2 bg-gray-600 border border-gray-500 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+        </div>
+        <div class="flex gap-2">
+          <button onclick="createKey()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-1.5 rounded-lg transition">등록</button>
+          <button onclick="hideKeyForm()" class="bg-gray-600 hover:bg-gray-500 text-white text-xs px-4 py-1.5 rounded-lg transition">취소</button>
+        </div>
+      </div>
+      <div id="keyList" class="space-y-2"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = localStorage.getItem('token');
+let me = null;
+let convId = null;
+let busy = false;
+let currentModel = localStorage.getItem('model') || 'sonnet';
+
+const MODELS = {
+  // Claude (Anthropic)
+  sonnet:       { id: 'claude-sonnet-4-6',                  label: 'Claude Sonnet 4.6',   desc: '균형잡힌 성능' },
+  opus:         { id: 'claude-opus-4-6',                    label: 'Claude Opus 4.6',     desc: '최고 성능' },
+  haiku:        { id: 'claude-haiku-4-5-20251001',          label: 'Claude Haiku 4.5',    desc: '빠름/저렴' },
+  // OpenAI (가비아)
+  'gpt-5-pro':  { id: 'gpt-5.4-pro',                       label: 'GPT-5 Pro',           desc: 'OpenAI 최고 성능' },
+  'gpt-5':      { id: 'gpt-5.2',                           label: 'GPT-5',               desc: 'OpenAI 균형' },
+  'o4-mini':    { id: 'o4-mini',                           label: 'o4-mini',             desc: 'OpenAI 추론' },
+  codex:        { id: 'gpt-5.3-codex',                     label: 'GPT Codex',           desc: '코딩 특화' },
+  // DeepSeek
+  deepseek:     { id: 'deepseek-r1-0528',                  label: 'DeepSeek R1',         desc: '오픈소스 추론' },
+  // Google
+  gemini:       { id: 'gemini-3.1-flash-lite-preview',     label: 'Gemini Flash',        desc: 'Google 빠름' },
+  // Alibaba
+  qwen:         { id: 'qwen3.5-122b-a10b',                 label: 'Qwen3.5 122B',        desc: 'Alibaba 대형' },
+  'qwen-plus':  { id: 'qwen3.6-plus',                      label: 'Qwen3.6 Plus',        desc: 'Alibaba 최신' },
+  // Meta
+  llama:        { id: 'llama-3.2-11b-vision',              label: 'Llama 3.2 Vision',    desc: 'Meta 비전' },
+  // Moonshot
+  kimi:         { id: 'kimi-k2-instruct',                  label: 'Kimi K2',             desc: 'Moonshot 최신' },
+  'kimi-think': { id: 'kimi-k2-thinking',                  label: 'Kimi K2 Think',       desc: '추론 특화' },
+  // MiniMax
+  minimax:      { id: 'minimax-m2.1',                      label: 'MiniMax M2',          desc: 'MiniMax 최신' },
+  // Perplexity
+  sonar:        { id: 'sonar-pro-search',                  label: 'Sonar Pro',           desc: '웹 검색 포함' },
+  'sonar-deep': { id: 'sonar-deep-research',               label: 'Sonar Research',      desc: '심층 리서치' },
+  // ZAI / Xiaomi
+  glm:          { id: 'glm-4.7',                           label: 'GLM-4.7',             desc: 'ZAI 최신' },
+  mimo:         { id: 'mimo-v2.5-pro',                     label: 'MiMo Pro',            desc: 'Xiaomi AI' },
+};
+
+// --- API ---
+async function api(method, path, body) {
+  const h = {'Content-Type':'application/json'};
+  if(token) h['Authorization'] = 'Bearer '+token;
+  const r = await fetch('/api'+path, {method, headers:h, body:body?JSON.stringify(body):undefined});
+  if(r.status===401){logout();return null;}
+  const j = await r.json();
+  if(!r.ok) throw new Error(j.detail||'오류가 발생했습니다');
+  return j;
+}
+
+// --- Auth ---
+async function login(){
+  const u=document.getElementById('loginUser').value.trim();
+  const p=document.getElementById('loginPw').value;
+  const err=document.getElementById('loginErr');
+  err.classList.add('hidden');
+  if(!u||!p){err.textContent='아이디와 비밀번호를 입력해주세요';err.classList.remove('hidden');return;}
+  try{
+    const r=await api('POST','/auth/login',{username:u,password:p});
+    token=r.access_token;
+    localStorage.setItem('token',token);
+    if(r.force_password_reset) showPage('resetPage');
+    else await initMain();
+  }catch(e){err.textContent=e.message;err.classList.remove('hidden');}
+}
+
+async function changePassword(){
+  const cur=document.getElementById('curPw').value;
+  const nw=document.getElementById('newPw').value;
+  const cf=document.getElementById('confirmPw').value;
+  const err=document.getElementById('resetErr');
+  const ok=document.getElementById('resetOk');
+  err.classList.add('hidden'); ok.classList.add('hidden');
+  if(nw!==cf){err.textContent='새 비밀번호가 일치하지 않습니다';err.classList.remove('hidden');return;}
+  if(nw.length<8){err.textContent='비밀번호는 8자 이상이어야 합니다';err.classList.remove('hidden');return;}
+  try{
+    await api('POST','/auth/change-password',{current_password:cur,new_password:nw});
+    ok.textContent='변경 완료! 잠시 후 이동합니다...';
+    ok.classList.remove('hidden');
+    setTimeout(()=>initMain(),1200);
+  }catch(e){err.textContent=e.message;err.classList.remove('hidden');}
+}
+
+function logout(){
+  token=null; me=null; convId=null;
+  localStorage.removeItem('token');
+  showPage('loginPage');
+}
+
+// --- Init ---
+async function initMain(){
+  me=await api('GET','/auth/me');
+  if(!me) return;
+  document.getElementById('uname').textContent=me.username;
+  document.getElementById('avatar').textContent=me.username[0].toUpperCase();
+  if(me.role==='admin'||me.role==='superadmin') document.getElementById('adminBtn').classList.remove('hidden');
+  updateModelBadge();
+  showPage('mainPage');
+  await loadConvs();
+}
+
+// --- Pages ---
+function showPage(id){
+  ['loginPage','resetPage','mainPage'].forEach(x=>document.getElementById(x).classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+// --- Conversations ---
+async function loadConvs(){
+  const convs=await api('GET','/chat/conversations');
+  if(!convs) return;
+  const el=document.getElementById('convList');
+  el.innerHTML='';
+  convs.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='w-full text-left px-3 py-2 rounded-xl text-sm transition group flex items-center justify-between '+(c.id===convId?'bg-gray-700 text-white':'text-gray-400 hover:bg-gray-700 hover:text-white');
+    b.innerHTML=`<span class="truncate flex-1">${esc(c.title)}</span>
+      <span onclick="delConv(event,${c.id})" class="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 ml-1 flex-shrink-0 cursor-pointer">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+      </span>`;
+    b.onclick=e=>{if(!e.target.closest('span[onclick]'))loadConv(c.id);};
+    el.appendChild(b);
+  });
+}
+
+async function loadConv(id){
+  convId=id;
+  const msgs=await api('GET',`/chat/conversations/${id}/messages`);
+  if(!msgs) return;
+  const area=document.getElementById('msgArea');
+  area.innerHTML='';
+  msgs.forEach(m=>addMsg(m.role,m.content));
+  area.scrollTop=area.scrollHeight;
+  await loadConvs();
+}
+
+function newChat(){
+  convId=null;
+  document.getElementById('msgArea').innerHTML=`
+    <div class="flex items-center justify-center h-full text-center">
+      <div>
+        <div class="text-5xl mb-4">💬</div>
+        <div class="text-xl font-medium text-gray-300">무엇을 도와드릴까요?</div>
+        <div class="text-gray-500 text-sm mt-2">새 대화를 시작하거나 이전 대화를 선택하세요</div>
+      </div>
+    </div>`;
+  document.getElementById('input').focus();
+}
+
+async function delConv(e,id){
+  e.stopPropagation();
+  if(!confirm('이 대화를 삭제하시겠습니까?')) return;
+  await api('DELETE',`/chat/conversations/${id}`);
+  if(convId===id) newChat();
+  await loadConvs();
+}
+
+// --- Chat ---
+function handleSlashCommand(content){
+  const parts=content.trim().split(/\s+/);
+  if(parts[0]!=='/model') return false;
+  const arg=parts[1]?.toLowerCase();
+  if(!arg){
+    const m=MODELS[currentModel]||MODELS.sonnet;
+    addMsg('system',`현재 모델: **${m.label}** (${m.desc})\n\n**Claude (Anthropic)**\n- \`/model sonnet\` — Claude Sonnet 4.6\n- \`/model opus\` — Claude Opus 4.6\n- \`/model haiku\` — Claude Haiku 4.5\n\n**OpenAI (가비아)**\n- \`/model gpt-5-pro\` — GPT-5 Pro\n- \`/model gpt-5\` — GPT-5\n- \`/model o4-mini\` — o4-mini\n- \`/model codex\` — GPT Codex\n\n**기타 (가비아)**\n- \`/model deepseek\` — DeepSeek R1\n- \`/model gemini\` — Gemini Flash\n- \`/model qwen\` — Qwen3.5 122B\n- \`/model qwen-plus\` — Qwen3.6 Plus\n- \`/model llama\` — Llama 3.2 Vision\n- \`/model kimi\` — Kimi K2\n- \`/model kimi-think\` — Kimi K2 Think\n- \`/model minimax\` — MiniMax M2\n- \`/model sonar\` — Sonar Pro (웹검색)\n- \`/model sonar-deep\` — Sonar Research\n- \`/model glm\` — GLM-4.7\n- \`/model mimo\` — MiMo Pro`);
+    return true;
+  }
+  if(!MODELS[arg]){
+    addMsg('system',`알 수 없는 모델: \`${arg}\`\n\n\`/model\` 입력 시 전체 목록 확인 가능합니다.`);
+    return true;
+  }
+  currentModel=arg;
+  localStorage.setItem('model',arg);
+  updateModelBadge();
+  const m=MODELS[arg];
+  addMsg('system',`모델 변경: **${m.label}** (${m.desc})`);
+  return true;
+}
+
+function onModelChange(val){
+  currentModel=val;
+  localStorage.setItem('model',val);
+  updateModelBadge();
+}
+
+function updateModelBadge(){
+  const sel=document.getElementById('modelSelect');
+  if(sel) sel.value=currentModel;
+}
+
+async function sendMsg(){
+  if(busy) return;
+  const inp=document.getElementById('input');
+  const content=inp.value.trim();
+  if(!content) return;
+  inp.value='';
+  autoResize(inp);
+
+  if(handleSlashCommand(content)) return;
+
+  const welcome=document.getElementById('welcome');
+  if(welcome) welcome.remove();
+
+  addMsg('user',content);
+  const tid='t'+Date.now();
+  addTyping(tid);
+  busy=true;
+  document.getElementById('sendBtn').disabled=true;
+
+  try{
+    const r=await api('POST','/chat/send',{content,conversation_id:convId,model:currentModel});
+    if(r){
+      convId=r.conversation_id;
+      document.getElementById(tid)?.remove();
+      addMsg('assistant',r.message.content);
+      await loadConvs();
+    }
+  }catch(e){
+    document.getElementById(tid)?.remove();
+    addMsg('error','오류: '+e.message);
+  }finally{
+    busy=false;
+    document.getElementById('sendBtn').disabled=false;
+    inp.focus();
+  }
+}
+
+function addMsg(role,content){
+  const area=document.getElementById('msgArea');
+  const d=document.createElement('div');
+  if(role==='user'){
+    d.className='flex justify-end';
+    d.innerHTML=`<div class="max-w-[72%] bg-blue-600 rounded-2xl rounded-tr-sm px-4 py-3 text-sm whitespace-pre-wrap">${esc(content)}</div>`;
+  }else if(role==='assistant'){
+    d.className='flex gap-3';
+    d.innerHTML=`<div class="w-7 h-7 bg-orange-500 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5">AI</div>
+      <div class="flex-1 max-w-[80%] msg-content text-sm text-gray-100">${marked.parse(content)}</div>`;
+  }else if(role==='system'){
+    d.className='flex justify-center';
+    d.innerHTML=`<div class="text-blue-300 text-sm bg-blue-900/20 border border-blue-800 px-4 py-2.5 rounded-xl msg-content">${marked.parse(content)}</div>`;
+  }else{
+    d.className='flex justify-center';
+    d.innerHTML=`<div class="text-red-400 text-sm bg-red-900/30 px-4 py-2 rounded-lg">${esc(content)}</div>`;
+  }
+  area.appendChild(d);
+  area.scrollTop=area.scrollHeight;
+}
+
+function addTyping(id){
+  const area=document.getElementById('msgArea');
+  const d=document.createElement('div');
+  d.id=id; d.className='flex gap-3';
+  d.innerHTML=`<div class="w-7 h-7 bg-orange-500 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5">AI</div>
+    <div class="flex items-center gap-1 py-2"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
+  area.appendChild(d);
+  area.scrollTop=area.scrollHeight;
+}
+
+function handleKey(e){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}
+}
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,180)+'px';}
+
+// --- Admin ---
+function openAdmin(){document.getElementById('adminModal').classList.remove('hidden');loadUsers();}
+function closeAdmin(){document.getElementById('adminModal').classList.add('hidden');}
+
+function switchTab(t){
+  document.getElementById('usersTab').classList.add('hidden');
+  document.getElementById('keysTab').classList.add('hidden');
+  document.getElementById('tabU').className='px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white transition';
+  document.getElementById('tabK').className='px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white transition';
+  document.getElementById(t==='users'?'usersTab':'keysTab').classList.remove('hidden');
+  document.getElementById(t==='users'?'tabU':'tabK').className='px-5 py-3 text-sm font-medium border-b-2 border-blue-500 text-blue-400 transition';
+  if(t==='users') loadUsers(); else loadKeys();
+}
+
+async function loadUsers(){
+  const users=await api('GET','/users');
+  if(!users) return;
+  const el=document.getElementById('userList');
+  el.innerHTML='';
+  const roleLabel={superadmin:'최고 관리자',admin:'관리자',user:'일반 사용자'};
+  const roleCls={superadmin:'bg-purple-900/40 text-purple-300 border-purple-600',admin:'bg-blue-900/40 text-blue-300 border-blue-600',user:'bg-gray-700 text-gray-300 border-gray-600'};
+  users.forEach(u=>{
+    const d=document.createElement('div');
+    d.className='bg-gray-700 rounded-xl px-4 py-3 flex items-center justify-between gap-3';
+    d.innerHTML=`<div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 bg-blue-600 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold">${u.username[0].toUpperCase()}</div>
+        <div class="min-w-0">
+          <div class="text-sm font-medium truncate">${esc(u.username)}</div>
+          <div class="text-xs text-gray-400 truncate">${u.email||'이메일 없음'}</div>
+        </div>
+        <span class="text-xs border px-2 py-0.5 rounded-full flex-shrink-0 ${roleCls[u.role]||roleCls.user}">${roleLabel[u.role]||u.role}</span>
+        ${u.force_password_reset?'<span class="text-xs text-yellow-400 bg-yellow-900/30 px-2 py-0.5 rounded-full border border-yellow-700 flex-shrink-0">PW 변경 필요</span>':''}
+      </div>
+      <div class="flex-shrink-0">
+        ${u.role!=='superadmin'?`<button onclick="toggleUser(${u.id})"
+          class="text-xs px-3 py-1 rounded-lg border transition ${u.is_active?'border-red-700 text-red-400 hover:bg-red-900/30':'border-green-700 text-green-400 hover:bg-green-900/30'}">
+          ${u.is_active?'비활성화':'활성화'}
+        </button>`:''}
+      </div>`;
+    el.appendChild(d);
+  });
+}
+
+function showUserForm(){document.getElementById('userForm').classList.remove('hidden');}
+function hideUserForm(){document.getElementById('userForm').classList.add('hidden');}
+
+async function createUser(){
+  const u=document.getElementById('fUser').value.trim();
+  const p=document.getElementById('fPw').value;
+  const e=document.getElementById('fEmail').value.trim();
+  const r=document.getElementById('fRole').value;
+  if(!u||!p){alert('사용자명과 비밀번호를 입력해주세요');return;}
+  try{
+    await api('POST','/users',{username:u,password:p,email:e||null,role:r});
+    document.getElementById('fUser').value='';
+    document.getElementById('fPw').value='';
+    document.getElementById('fEmail').value='';
+    hideUserForm();
+    await loadUsers();
+  }catch(e){alert(e.message);}
+}
+
+async function toggleUser(id){
+  try{await api('PATCH',`/users/${id}/toggle-active`);await loadUsers();}
+  catch(e){alert(e.message);}
+}
+
+async function loadKeys(){
+  const keys=await api('GET','/keys');
+  if(!keys) return;
+  const el=document.getElementById('keyList');
+  el.innerHTML='';
+  const pLabel={anthropic:'Anthropic',openai:'OpenAI',gemini:'Google Gemini',other:'기타'};
+  const pCls={anthropic:'bg-orange-900/40 text-orange-300 border-orange-600',openai:'bg-green-900/40 text-green-300 border-green-600',gemini:'bg-blue-900/40 text-blue-300 border-blue-600',other:'bg-gray-700 text-gray-300 border-gray-600'};
+  keys.forEach(k=>{
+    const d=document.createElement('div');
+    d.className='bg-gray-700 rounded-xl px-4 py-3 flex items-center justify-between gap-3';
+    d.innerHTML=`<div class="flex items-center gap-2.5 min-w-0">
+        <span class="text-xs border px-2 py-0.5 rounded-full flex-shrink-0 ${pCls[k.provider]||pCls.other}">${pLabel[k.provider]||k.provider}</span>
+        <div class="min-w-0">
+          <div class="text-sm font-medium truncate">${esc(k.name)}</div>
+          <div class="text-xs text-gray-400 font-mono truncate">${esc(k.key_value)}</div>
+        </div>
+        <span class="text-xs flex-shrink-0 ${k.is_active?'text-green-400':'text-gray-500'}">${k.is_active?'활성':'비활성'}</span>
+      </div>
+      <div class="flex gap-1.5 flex-shrink-0">
+        <button onclick="toggleKey(${k.id})"
+          class="text-xs px-2.5 py-1 rounded-lg border transition ${k.is_active?'border-yellow-700 text-yellow-400 hover:bg-yellow-900/30':'border-green-700 text-green-400 hover:bg-green-900/30'}">
+          ${k.is_active?'비활성화':'활성화'}
+        </button>
+        <button onclick="delKey(${k.id})"
+          class="text-xs px-2.5 py-1 rounded-lg border border-red-700 text-red-400 hover:bg-red-900/30 transition">삭제</button>
+      </div>`;
+    el.appendChild(d);
+  });
+}
+
+function showKeyForm(){document.getElementById('keyForm').classList.remove('hidden');}
+function hideKeyForm(){document.getElementById('keyForm').classList.add('hidden');}
+
+async function createKey(){
+  const n=document.getElementById('kName').value.trim();
+  const p=document.getElementById('kProvider').value;
+  const v=document.getElementById('kValue').value.trim();
+  if(!n||!v){alert('키 이름과 API 키 값을 입력해주세요');return;}
+  try{
+    await api('POST','/keys',{name:n,provider:p,key_value:v});
+    document.getElementById('kName').value='';
+    document.getElementById('kValue').value='';
+    hideKeyForm();
+    await loadKeys();
+  }catch(e){alert(e.message);}
+}
+
+async function toggleKey(id){
+  try{await api('PATCH',`/keys/${id}/toggle`);await loadKeys();}
+  catch(e){alert(e.message);}
+}
+
+async function delKey(id){
+  if(!confirm('이 API 키를 삭제하시겠습니까?')) return;
+  try{await api('DELETE',`/keys/${id}`);await loadKeys();}
+  catch(e){alert(e.message);}
+}
+
+function esc(t){return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// --- Boot ---
+(async()=>{
+  if(token){
+    try{
+      me=await api('GET','/auth/me');
+      if(!me) return showPage('loginPage');
+      if(me.force_password_reset) return showPage('resetPage');
+      document.getElementById('uname').textContent=me.username;
+      document.getElementById('avatar').textContent=me.username[0].toUpperCase();
+      if(me.role==='admin'||me.role==='superadmin') document.getElementById('adminBtn').classList.remove('hidden');
+      showPage('mainPage');
+      await loadConvs();
+    }catch{showPage('loginPage');}
+  }else{
+    showPage('loginPage');
+  }
+})();
+</script>
+</body>
+</html>

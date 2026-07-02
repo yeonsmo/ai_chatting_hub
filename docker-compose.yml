@@ -1,0 +1,15 @@
+services:
+  claude-chat:
+    build: .
+    container_name: claude-chat
+    restart: always
+    ports:
+      - "3899:3899"
+    env_file:
+      - .env
+    networks:
+      - n8n_default
+
+networks:
+  n8n_default:
+    external: true
