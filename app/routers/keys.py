@@ -15,23 +15,37 @@ def mask_key(key: str) -> str:
     return key[:4] + "****" + key[-4:]
 
 
+def to_response(key: APIKey) -> APIKeyResponse:
+    """세션에 붙은 ORM 객체를 건드리지 않고 마스킹된 응답을 만든다."""
+    return APIKeyResponse(
+        id=key.id,
+        name=key.name,
+        provider=key.provider,
+        key_value=mask_key(key.key_value),
+        is_active=key.is_active,
+        created_at=key.created_at,
+    )
+
+
 @router.post("", response_model=APIKeyResponse)
 async def create_api_key(
     request: APIKeyCreate,
     current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
+    key_value = request.key_value.strip()
+    if not key_value:
+        raise HTTPException(status_code=400, detail="API 키 값을 입력해주세요")
     api_key = APIKey(
-        name=request.name,
-        provider=request.provider,
-        key_value=request.key_value,
+        name=request.name.strip()[:100],
+        provider=request.provider.strip()[:50],
+        key_value=key_value,
         created_by=current_user.id,
     )
     db.add(api_key)
     await db.commit()
     await db.refresh(api_key)
-    api_key.key_value = mask_key(api_key.key_value)
-    return api_key
+    return to_response(api_key)
 
 
 @router.get("", response_model=list[APIKeyResponse])
@@ -39,11 +53,8 @@ async def list_api_keys(
     current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(APIKey))
-    keys = result.scalars().all()
-    for key in keys:
-        key.key_value = mask_key(key.key_value)
-    return keys
+    result = await db.execute(select(APIKey).order_by(APIKey.id.desc()))
+    return [to_response(k) for k in result.scalars().all()]
 
 
 @router.patch("/{key_id}/toggle")

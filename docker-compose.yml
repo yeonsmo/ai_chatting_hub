@@ -7,8 +7,13 @@ services:
       - "3899:3899"
     env_file:
       - .env
+    volumes:
+      - chat_uploads:/app/data/uploads
     networks:
       - n8n_default
+
+volumes:
+  chat_uploads:
 
 networks:
   n8n_default:

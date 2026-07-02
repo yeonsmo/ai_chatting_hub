@@ -1,6 +1,7 @@
 import asyncpg
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import text
 from app.config import settings
 
 Base = declarative_base()
@@ -12,6 +13,15 @@ AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=F
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
+
+
+# 기존 배포(v1) 테이블에 새 컬럼을 더하는 경량 마이그레이션
+MIGRATION_STATEMENTS = [
+    'ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL',
+    'ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE',
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS model VARCHAR(80)',
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider VARCHAR(40)',
+]
 
 
 async def init_db():
@@ -33,8 +43,10 @@ async def init_db():
     finally:
         await conn.close()
 
-    # 테이블 생성
+    # 테이블 생성 + 컬럼 마이그레이션
     async with engine.begin() as conn:
         from app import models  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
+        for stmt in MIGRATION_STATEMENTS:
+            await conn.execute(text(stmt))
     print("[DB] 테이블 초기화 완료")
