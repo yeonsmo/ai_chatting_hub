@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -17,11 +18,16 @@ def mask_key(key: str) -> str:
 
 def to_response(key: APIKey) -> APIKeyResponse:
     """세션에 붙은 ORM 객체를 건드리지 않고 마스킹된 응답을 만든다."""
+    try:
+        extra_keys = sorted((json.loads(key.extra) or {}).keys()) if key.extra else []
+    except (ValueError, TypeError):
+        extra_keys = []
     return APIKeyResponse(
         id=key.id,
         name=key.name,
         provider=key.provider,
         key_value=mask_key(key.key_value),
+        extra_keys=extra_keys,
         is_active=key.is_active,
         created_at=key.created_at,
     )
@@ -36,10 +42,12 @@ async def create_api_key(
     key_value = request.key_value.strip()
     if not key_value:
         raise HTTPException(status_code=400, detail="API 키 값을 입력해주세요")
+    extra = {k: str(v).strip() for k, v in (request.extra or {}).items() if str(v).strip()}
     api_key = APIKey(
         name=request.name.strip()[:100],
         provider=request.provider.strip()[:50],
         key_value=key_value,
+        extra=json.dumps(extra, ensure_ascii=False) if extra else None,
         created_by=current_user.id,
     )
     db.add(api_key)

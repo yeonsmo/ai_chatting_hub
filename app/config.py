@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # 파일 업로드
     upload_dir: str = "data/uploads"
-    max_upload_mb: int = 25
+    max_upload_mb: int = 50
 
     @property
     def database_url(self) -> str:

@@ -6,9 +6,11 @@ from app.database import Base
 
 
 class UserRole(str, enum.Enum):
-    superadmin = "superadmin"
-    admin = "admin"
-    user = "user"
+    """역할 계층. 레벨은 app/roles.py의 ROLE_LEVELS에서 정의(확장 시 양쪽 모두 추가)."""
+    superadmin = "superadmin"  # 최고 관리자
+    admin = "admin"            # 관리자
+    manager = "manager"        # 담당자
+    user = "user"              # 일반 사용자
 
 
 class User(Base):
@@ -101,11 +103,70 @@ class APIKey(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
-    provider = Column(String(50), nullable=False)  # anthropic, gabia, openai, gemini, etc.
+    provider = Column(String(50), nullable=False)  # anthropic, gabia, openai, azure, gemini, bedrock, ...
     key_value = Column(String(500), nullable=False)
+    # 프로바이더별 추가 설정(JSON): azure={endpoint, api_version}, bedrock={aws_secret_key, region} 등
+    extra = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+
+class ModelRoute(Base):
+    """모델 키 → 어느 프로바이더의 어떤 모델을 호출할지 지정 (관리자 패널에서 편집)."""
+    __tablename__ = "model_routes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(80), unique=True, nullable=False)          # 프론트에서 쓰는 모델 키 (예: sonnet)
+    label = Column(String(120), nullable=False)                    # 표시 이름
+    provider = Column(String(50), nullable=False)                  # anthropic/gabia/openai/azure/gemini/bedrock
+    provider_model_id = Column(String(200), nullable=False)        # 실제 모델 ID(azure는 deployment 이름)
+    description = Column(String(200), default="")
+    min_role = Column(String(30), default="user", nullable=False)  # 이 모델을 쓸 수 있는 최소 역할
+    enabled = Column(Boolean, default=True, nullable=False)
+    sort = Column(Integer, default=100)
+
+
+class Integration(Base):
+    """외부 시스템 연동(하이웍스, 구글, 사내 API 등). 스킬이 이 연동의 인증으로 호출된다."""
+    __tablename__ = "integrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)          # 표시 이름 (예: 하이웍스)
+    kind = Column(String(50), default="custom")         # hiworks/google/slack/custom ...
+    base_url = Column(String(500), nullable=False)      # https://api.example.com
+    auth_type = Column(String(20), default="bearer")    # bearer / header / query / none
+    auth_key = Column(String(100), default="Authorization")  # header 이름 또는 query 파라미터 이름
+    credential = Column(String(1000), default="")       # API 키/토큰
+    extra_headers = Column(Text, nullable=True)         # 추가 헤더 JSON
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    skills = relationship("Skill", back_populates="integration", cascade="all, delete-orphan")
+
+
+class Skill(Base):
+    """AI가 도구(tool)로 호출할 수 있는 API 스킬. min_role로 권한별 사용 제한."""
+    __tablename__ = "skills"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(64), unique=True, nullable=False)   # 도구 이름 (영문/숫자/_)
+    title = Column(String(120), nullable=False)              # 표시 이름 (예: 하이웍스 결재 조회)
+    description = Column(Text, nullable=False)               # 모델에게 주는 설명(언제 쓰는지)
+    integration_id = Column(Integer, ForeignKey("integrations.id", ondelete="CASCADE"), nullable=False)
+    method = Column(String(10), default="GET")               # GET/POST/PUT/DELETE
+    path = Column(String(500), nullable=False)               # /v1/users/{user_id} 형태, {param} 치환
+    query_template = Column(Text, nullable=True)             # JSON: {"q": "{keyword}"}
+    body_template = Column(Text, nullable=True)              # JSON 문자열, {param} 치환
+    params_schema = Column(Text, nullable=True)              # JSON: [{name,type,description,required}]
+    min_role = Column(String(30), default="manager", nullable=False)  # 권한별 사용 제한
+    timeout_s = Column(Integer, default=20)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    integration = relationship("Integration", back_populates="skills")
 
 
 class UsageLog(Base):

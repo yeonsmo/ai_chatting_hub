@@ -93,9 +93,16 @@ class ConversationUpdate(BaseModel):
     title: Optional[str] = None
 
 
+class SkillUse(BaseModel):
+    name: str
+    title: str
+    status: str  # success / error
+
+
 class ChatResponse(BaseModel):
     conversation_id: int
     conversation_title: str
+    used_skills: list[SkillUse] = []
     message: MessageResponse
 
 
@@ -133,6 +140,7 @@ class APIKeyCreate(BaseModel):
     name: str
     provider: str
     key_value: str
+    extra: Optional[dict] = None  # azure: {endpoint, api_version} / bedrock: {aws_secret_key, region}
 
 
 class APIKeyResponse(BaseModel):
@@ -140,6 +148,117 @@ class APIKeyResponse(BaseModel):
     name: str
     provider: str
     key_value: str  # 마스킹된 값만 담아 반환
+    extra_keys: list[str] = []  # 등록된 추가 설정 키 이름만 노출(값은 비공개)
+    is_active: bool
+    created_at: datetime
+
+
+# ---------- 모델 라우팅 ----------
+
+class ModelRouteUpsert(BaseModel):
+    key: str
+    label: str
+    provider: str
+    provider_model_id: str
+    description: str = ""
+    min_role: str = "user"
+    enabled: bool = True
+    sort: int = 100
+
+
+class ModelRouteResponse(ModelRouteUpsert):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- 연동/스킬 ----------
+
+class IntegrationCreate(BaseModel):
+    name: str
+    kind: str = "custom"
+    base_url: str
+    auth_type: str = "bearer"      # bearer / header / query / none
+    auth_key: str = "Authorization"
+    credential: str = ""
+    extra_headers: Optional[dict] = None
+
+
+class IntegrationUpdate(BaseModel):
+    name: Optional[str] = None
+    kind: Optional[str] = None
+    base_url: Optional[str] = None
+    auth_type: Optional[str] = None
+    auth_key: Optional[str] = None
+    credential: Optional[str] = None  # 빈 문자열이면 유지
+    extra_headers: Optional[dict] = None
+    is_active: Optional[bool] = None
+
+
+class IntegrationResponse(BaseModel):
+    id: int
+    name: str
+    kind: str
+    base_url: str
+    auth_type: str
+    auth_key: str
+    has_credential: bool = False
+    is_active: bool
+    skill_count: int = 0
+    created_at: datetime
+
+
+class SkillParam(BaseModel):
+    name: str
+    type: str = "string"
+    description: str = ""
+    required: bool = False
+
+
+class SkillCreate(BaseModel):
+    name: str                       # 도구 이름 (영문/숫자/_/-)
+    title: str
+    description: str
+    integration_id: int
+    method: str = "GET"
+    path: str
+    query_template: Optional[dict] = None
+    body_template: Optional[str] = None
+    params: list[SkillParam] = []
+    min_role: str = "manager"
+    timeout_s: int = 20
+    is_active: bool = True
+
+
+class SkillUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    integration_id: Optional[int] = None
+    method: Optional[str] = None
+    path: Optional[str] = None
+    query_template: Optional[dict] = None
+    body_template: Optional[str] = None
+    params: Optional[list[SkillParam]] = None
+    min_role: Optional[str] = None
+    timeout_s: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class SkillResponse(BaseModel):
+    id: int
+    name: str
+    title: str
+    description: str
+    integration_id: int
+    integration_name: str = ""
+    method: str
+    path: str
+    query_template: Optional[dict] = None
+    body_template: Optional[str] = None
+    params: list[SkillParam] = []
+    min_role: str
+    timeout_s: int
     is_active: bool
     created_at: datetime
 

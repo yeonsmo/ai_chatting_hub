@@ -6,57 +6,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-import anthropic
-import openai
-from openai import AsyncOpenAI
-from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.file_utils import stored_path
-from app.models import User, Conversation, Message, APIKey, Attachment, Project, UsageLog
+from app.models import (User, Conversation, Message, Attachment, Project, UsageLog,
+                        ModelRoute, Skill, Integration)
+from app.providers import (run_chat, friendly_api_error, ToolContext,
+                           ANTHROPIC_FAMILY, PROVIDERS)
+from app.roles import role_level, has_min_role
 from app.routers.files import to_response as attachment_response
+from app.skills_runtime import execute_skill, anthropic_tool_def, openai_tool_def
 from app.schemas import MessageCreate, ChatResponse, ConversationResponse, ConversationUpdate, MessageResponse
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-
-CLAUDE_MODELS = {
-    "sonnet":                    "claude-sonnet-4-6",
-    "opus":                      "claude-opus-4-6",
-    "haiku":                     "claude-haiku-4-5-20251001",
-    "claude-sonnet-4-6":         "claude-sonnet-4-6",
-    "claude-opus-4-6":           "claude-opus-4-6",
-    "claude-haiku-4-5-20251001": "claude-haiku-4-5-20251001",
-}
-
-GABIA_MODELS = {
-    # OpenAI
-    "gpt-5-pro":   "gpt-5.4-pro",
-    "gpt-5":       "gpt-5.2",
-    "o4-mini":     "o4-mini",
-    "codex":       "gpt-5.3-codex",
-    # DeepSeek
-    "deepseek":    "deepseek-r1-0528",
-    # Google
-    "gemini":      "gemini-3.1-flash-lite-preview",
-    # Alibaba
-    "qwen":        "qwen3.5-122b-a10b",
-    "qwen-plus":   "qwen3.6-plus",
-    # Meta
-    "llama":       "llama-3.2-11b-vision",
-    # Moonshot
-    "kimi":        "kimi-k2-instruct",
-    "kimi-think":  "kimi-k2-thinking",
-    # MiniMax
-    "minimax":     "minimax-m2.1",
-    # Perplexity
-    "sonar":       "sonar-pro-search",
-    "sonar-deep":  "sonar-deep-research",
-    # ZAI
-    "glm":         "glm-4.7",
-    # Xiaomi
-    "mimo":        "mimo-v2.5-pro",
-}
 
 CLAUDE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024     # Claude 이미지 블록 제한
@@ -67,22 +29,28 @@ PROJECT_FILE_CHARS = 30_000           # 프로젝트 지식 파일당 길이
 PROJECT_TOTAL_CHARS = 120_000         # 프로젝트 지식 전체 상한
 
 
-async def get_provider_key(db: AsyncSession, provider: str, fallback: str) -> str:
-    """관리자 패널에 등록된 활성 키 우선, 없으면 .env 값."""
+async def get_model_route(db: AsyncSession, key: str, user: User) -> ModelRoute:
+    """모델 키 → 라우팅 조회 + 사용 가능 여부(활성/권한) 검사."""
+    result = await db.execute(select(ModelRoute).where(ModelRoute.key == key))
+    route = result.scalar_one_or_none()
+    if not route or not route.enabled:
+        raise HTTPException(status_code=404, detail=f"사용할 수 없는 모델입니다: {key}")
+    if role_level(user.role) < role_level(route.min_role):
+        raise HTTPException(status_code=403, detail="이 모델을 사용할 권한이 없습니다")
+    return route
+
+
+async def get_allowed_skills(db: AsyncSession, user: User) -> list[Skill]:
+    """역할 레벨에 따라 사용 가능한 활성 스킬 목록 (integration eager 로딩)."""
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
-        select(APIKey)
-        .where(APIKey.provider == provider, APIKey.is_active == True)
-        .order_by(APIKey.id.desc())
-        .limit(1)
+        select(Skill)
+        .join(Integration, Skill.integration_id == Integration.id)
+        .where(Skill.is_active == True, Integration.is_active == True)
+        .options(selectinload(Skill.integration))
+        .order_by(Skill.id.asc())
     )
-    key_obj = result.scalars().first()
-    key = key_obj.key_value if key_obj else fallback
-    if not key:
-        raise HTTPException(
-            status_code=500,
-            detail=f"{provider} API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
-        )
-    return key
+    return [s for s in result.scalars().all() if role_level(user.role) >= role_level(s.min_role)]
 
 
 def _read_file_bytes(att: Attachment) -> bytes | None:
@@ -194,64 +162,6 @@ async def build_system_prompt(db: AsyncSession, project: Project | None) -> str 
     return "\n\n".join(parts) if parts else None
 
 
-def friendly_api_error(e: Exception) -> str:
-    if isinstance(e, (anthropic.APIStatusError, openai.APIStatusError)):
-        try:
-            body = e.response.json()
-            msg = body.get("error", {}).get("message") or str(body)[:200]
-        except Exception:
-            msg = str(e)[:200]
-        return f"AI 응답 실패 (HTTP {e.status_code}): {msg}"
-    if isinstance(e, (anthropic.APIConnectionError, openai.APIConnectionError)):
-        return "AI 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요."
-    return f"AI 응답 실패: {str(e)[:200]}"
-
-
-async def call_claude(db: AsyncSession, model_id: str, system_prompt: str | None, messages: list):
-    api_key = await get_provider_key(db, "anthropic", settings.anthropic_api_key)
-    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=180.0)
-    kwargs = {"model": model_id, "max_tokens": 4096, "messages": messages}
-    if system_prompt:
-        kwargs["system"] = system_prompt
-    response = await client.messages.create(**kwargs)
-
-    text = "".join(b.text for b in response.content if getattr(b, "type", "") == "text").strip()
-    if not text:
-        raise HTTPException(status_code=502, detail="모델이 빈 응답을 반환했습니다. 다시 시도해주세요.")
-    usage = getattr(response, "usage", None)
-    return text, getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None)
-
-
-async def call_gabia(db: AsyncSession, model_id: str, system_prompt: str | None, messages: list):
-    api_key = await get_provider_key(db, "gabia", settings.gabia_api_key)
-    client = AsyncOpenAI(api_key=api_key, base_url=f"{settings.ai_hub_base_url}/v1", timeout=180.0)
-
-    full_messages = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + messages
-
-    # 최신 모델(o시리즈/gpt-5 등)은 max_tokens 대신 max_completion_tokens를 요구한다.
-    # 프록시가 옛 파라미터만 받는 경우를 위해 실패 시 반대 파라미터로 1회 재시도.
-    try:
-        response = await client.chat.completions.create(
-            model=model_id, max_completion_tokens=4096, messages=full_messages,
-        )
-    except openai.BadRequestError as e:
-        if "max_completion_tokens" not in str(e):
-            raise
-        response = await client.chat.completions.create(
-            model=model_id, max_tokens=4096, messages=full_messages,
-        )
-
-    choice = response.choices[0] if response.choices else None
-    message = choice.message if choice else None
-    text = (message.content or "").strip() if message else ""
-    if not text:
-        refusal = getattr(message, "refusal", None) if message else None
-        detail = f"모델이 응답을 거부했습니다: {refusal}" if refusal else "모델이 빈 응답을 반환했습니다. 다시 시도해주세요."
-        raise HTTPException(status_code=502, detail=detail)
-    usage = getattr(response, "usage", None)
-    return text, getattr(usage, "prompt_tokens", None), getattr(usage, "completion_tokens", None)
-
-
 def client_ip(request: Request) -> str:
     return getattr(request.state, "client_ip", None) or (request.client.host if request.client else "")
 
@@ -350,24 +260,56 @@ async def send_message(
     attach_map = await _load_attachments_map(db, [m.id for m in history])
 
     requested = request.model or "sonnet"
-    use_gabia = requested in GABIA_MODELS
+    route = await get_model_route(db, requested, current_user)
+    is_anthropic_family = route.provider in ANTHROPIC_FAMILY
 
     llm_messages = []
     for m in history:
         matts = attach_map.get(m.id, [])
         if m.id == user_msg.id:
-            body = (build_openai_current_content(m.content, matts) if use_gabia
-                    else build_claude_current_content(m.content, matts))
+            body = (build_claude_current_content(m.content, matts) if is_anthropic_family
+                    else build_openai_current_content(m.content, matts))
         else:
             body = build_history_text(m, matts)
         llm_messages.append({"role": m.role, "content": body})
 
     system_prompt = await build_system_prompt(db, project)
 
-    # ---- 모델 호출 + 사용 로그 ----
+    # ---- 스킬(도구) 컨텍스트: 역할별 허용 스킬만 노출 ----
     started = time.monotonic()
-    provider = "gabia" if use_gabia else "anthropic"
-    model_id = GABIA_MODELS.get(requested) or CLAUDE_MODELS.get(requested, "claude-sonnet-4-6")
+    skills = await get_allowed_skills(db, current_user)
+    skill_map = {s.name: s for s in skills}
+    ip = client_ip(http_request)
+
+    async def skill_executor(name: str, params: dict) -> str:
+        skill = skill_map.get(name)
+        if not skill:
+            raise ValueError(f"허용되지 않은 스킬: {name}")
+        t0 = time.monotonic()
+        log = UsageLog(
+            user_id=current_user.id, username=current_user.username,
+            action="skill", conversation_id=conversation.id,
+            model=skill.name, provider=skill.integration.name,
+            client_ip=ip,
+        )
+        try:
+            result = await execute_skill(skill, skill.integration, params)
+            log.duration_ms = int((time.monotonic() - t0) * 1000)
+            db.add(log)
+            return result
+        except Exception as e:
+            log.status = "error"
+            log.detail = str(e)[:500]
+            log.duration_ms = int((time.monotonic() - t0) * 1000)
+            db.add(log)
+            raise
+
+    tool_ctx = ToolContext(
+        anthropic_tools=[anthropic_tool_def(s) for s in skills],
+        openai_tools=[openai_tool_def(s) for s in skills],
+        titles={s.name: s.title for s in skills},
+        executor=skill_executor,
+    ) if skills else None
 
     def make_log(**kw) -> UsageLog:
         return UsageLog(
@@ -376,17 +318,17 @@ async def send_message(
             action="chat",
             conversation_id=conversation.id,
             model=requested,
-            provider=provider,
-            client_ip=client_ip(http_request),
+            provider=route.provider,
+            client_ip=ip,
             duration_ms=int((time.monotonic() - started) * 1000),
             **kw,
         )
 
     try:
-        if use_gabia:
-            assistant_content, in_tok, out_tok = await call_gabia(db, model_id, system_prompt, llm_messages)
-        else:
-            assistant_content, in_tok, out_tok = await call_claude(db, model_id, system_prompt, llm_messages)
+        outcome = await run_chat(db, route.provider, route.provider_model_id,
+                                 system_prompt, llm_messages, tool_ctx)
+        assistant_content = outcome.text
+        in_tok, out_tok = outcome.input_tokens, outcome.output_tokens
     except HTTPException as e:
         db.add(make_log(status="error", detail=str(e.detail)[:500]))
         await db.commit()
@@ -403,7 +345,7 @@ async def send_message(
         role="assistant",
         content=assistant_content,
         model=requested,
-        provider=provider,
+        provider=route.provider,
     )
     db.add(assistant_msg)
     db.add(make_log(input_tokens=in_tok, output_tokens=out_tok))
@@ -414,6 +356,10 @@ async def send_message(
     return ChatResponse(
         conversation_id=conversation.id,
         conversation_title=conversation.title,
+        used_skills=[
+            {"name": s.name, "title": s.title, "status": s.status}
+            for s in outcome.used_skills
+        ],
         message=MessageResponse(
             id=assistant_msg.id,
             role=assistant_msg.role,
@@ -423,6 +369,28 @@ async def send_message(
             created_at=assistant_msg.created_at,
         ),
     )
+
+
+@router.get("/models")
+async def list_models(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """현재 사용자가 쓸 수 있는 모델 목록(관리자 패널의 라우팅 설정 반영)."""
+    result = await db.execute(
+        select(ModelRoute).where(ModelRoute.enabled == True).order_by(ModelRoute.sort.asc(), ModelRoute.id.asc())
+    )
+    routes = [r for r in result.scalars().all() if has_min_role(current_user, r.min_role)]
+    return [
+        {
+            "key": r.key,
+            "label": r.label,
+            "provider": r.provider,
+            "provider_label": PROVIDERS.get(r.provider, {}).get("label", r.provider),
+            "description": r.description or "",
+        }
+        for r in routes
+    ]
 
 
 @router.get("/conversations", response_model=list[ConversationResponse])

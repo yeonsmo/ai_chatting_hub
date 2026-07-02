@@ -17,10 +17,12 @@ async def create_user(
     current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.roles import role_level
     if request.role == UserRole.superadmin:
         raise HTTPException(status_code=403, detail="최고 관리자 계정은 생성할 수 없습니다")
-    if request.role == UserRole.admin and current_user.role != UserRole.superadmin:
-        raise HTTPException(status_code=403, detail="관리자 계정은 최고 관리자만 생성할 수 있습니다")
+    # 자기보다 낮은 레벨의 역할만 생성 가능 (예: 관리자는 담당자/사용자 생성)
+    if role_level(request.role) >= role_level(current_user.role):
+        raise HTTPException(status_code=403, detail="본인보다 낮은 권한의 계정만 생성할 수 있습니다")
 
     result = await db.execute(select(User).where(User.username == request.username))
     if result.scalar_one_or_none():

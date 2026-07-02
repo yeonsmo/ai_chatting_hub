@@ -1,84 +1,149 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gabia AI 허브</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='7' fill='url(%23g)'/%3E%3Cpath d='M12 4.7C12 4.7 6.5 10.5 6.5 14a5.5 5.5 0 0 0 11 0C17.5 10.5 12 4.7 12 4.7z' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>HP ENGINEERING · AI 허브</title>
+<meta name="theme-color" content="#0B1026">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AI 허브">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" href="/static/icons/icon-192.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
 <style>
+  /* ============================================================================
+     HP ENGINEERING — Liquid Glass 디자인 토큰 (딥네이비 + 코랄→핑크 글로우)
+     data-theme="dark"(기본) / "light" 로 전환. 모든 표면은 반투명 glass.
+     ============================================================================ */
+  :root {
+    --font-sans:'Pretendard Variable',Pretendard,-apple-system,system-ui,'Apple SD Gothic Neo',sans-serif;
+    --font-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace;
+
+    --accent-coral:#FF7A4D; --accent-pink:#FF4F9A; --accent:#FF7A4D;
+    --accent-grad:linear-gradient(120deg,#FF8A5B 0%,#FF5BA0 100%);
+    --accent-grad-soft:linear-gradient(120deg,rgba(255,138,91,.4),rgba(255,91,160,.4));
+    --accent-glow:0 0 40px -6px rgba(255,91,160,.55);
+
+    --sp:8px; --r-sm:12px; --r-md:18px; --r-lg:22px; --r-xl:30px; --r-pill:999px;
+    --ease:cubic-bezier(.32,.72,0,1); --spring:cubic-bezier(.34,1.45,.64,1);
+    --ok:#4ADE80; --warn:#FBBF24; --danger:#FF6B6B; --info:#5BB8FF;
+  }
+  [data-theme="dark"] {
+    color-scheme:dark;
+    --void:#0B1026; --void-2:#151B36;
+    --fg-1:rgba(255,255,255,.96); --fg-2:rgba(255,255,255,.64); --fg-3:rgba(255,255,255,.42);
+    --glass-thin:rgba(255,255,255,.06); --glass:rgba(255,255,255,.10); --glass-thick:rgba(255,255,255,.16);
+    --glass-chrome:rgba(22,26,48,.62);
+    --rim-light:rgba(255,255,255,.30); --rim-hair:rgba(255,255,255,.12); --rim-dark:rgba(0,0,0,.30);
+    --fill-1:rgba(255,255,255,.07); --fill-2:rgba(255,255,255,.13); --fill-strong:rgba(255,255,255,.20);
+    --shadow-1:0 2px 8px rgba(0,0,0,.28); --shadow-2:0 8px 28px rgba(0,0,0,.42); --shadow-3:0 22px 60px rgba(0,0,0,.55);
+    --blur:26px; --sat:180%;
+    --wallpaper:url("/static/assets/wallpaper-dusk.svg");
+  }
+  [data-theme="light"] {
+    color-scheme:light;
+    --void:#e9e7ef; --void-2:#f4f2f8;
+    --fg-1:rgba(18,18,26,.94); --fg-2:rgba(28,28,40,.62); --fg-3:rgba(28,28,40,.42);
+    --glass-thin:rgba(255,255,255,.45); --glass:rgba(255,255,255,.60); --glass-thick:rgba(255,255,255,.75);
+    --glass-chrome:rgba(255,255,255,.68);
+    --rim-light:rgba(255,255,255,.9); --rim-hair:rgba(120,120,140,.18); --rim-dark:rgba(120,120,140,.12);
+    --fill-1:rgba(120,120,140,.08); --fill-2:rgba(120,120,140,.15); --fill-strong:rgba(120,120,140,.24);
+    --shadow-1:0 2px 10px rgba(80,70,110,.10); --shadow-2:0 10px 30px rgba(80,70,110,.16); --shadow-3:0 24px 64px rgba(80,70,110,.22);
+    --blur:22px; --sat:160%;
+    --wallpaper:url("/static/assets/wallpaper-azure.svg");
+  }
+
   * { box-sizing:border-box; margin:0; padding:0; }
   html, body { height:100%; }
   body {
-    font-family:'Inter','Noto Sans KR',sans-serif; -webkit-font-smoothing:antialiased;
-    background:radial-gradient(1200px 760px at 22% -5%, #1d2433, #0c0f15 62%);
-    color:#1e293b; overflow:hidden;
+    font-family:var(--font-sans); -webkit-font-smoothing:antialiased; letter-spacing:-.006em;
+    background:var(--wallpaper) center/cover no-repeat fixed, var(--void);
+    color:var(--fg-1); overflow:hidden;
   }
   ::-webkit-scrollbar { width:8px; height:8px; }
   ::-webkit-scrollbar-track { background:transparent; }
-  ::-webkit-scrollbar-thumb { background:rgba(100,116,139,0.28); border-radius:999px; }
-  ::-webkit-scrollbar-thumb:hover { background:rgba(100,116,139,0.48); }
-  textarea::placeholder, input::placeholder { color:#94a3b8; }
-  button { font-family:inherit; }
-  input, textarea, select { font-family:inherit; }
+  ::-webkit-scrollbar-thumb { background:var(--fill-2); border-radius:999px; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--fill-strong); }
+  textarea::placeholder, input::placeholder { color:var(--fg-3); }
+  button, input, textarea, select { font-family:inherit; }
+  select option { color:#1e293b; }  /* 네이티브 드롭다운 가독성 */
 
-  @keyframes blobA { 0%,100%{transform:translate(0,0) scale(1);} 33%{transform:translate(40px,60px) scale(1.12);} 66%{transform:translate(-30px,30px) scale(.92);} }
-  @keyframes blobB { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(-50px,-44px) scale(1.18);} }
-  @keyframes blobC { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(60px,-28px) scale(.88);} }
+  /* glass 재질 — 배경을 굴절시키는 핵심 프리미티브 */
+  .glass {
+    background-color:var(--glass); backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+    -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+    border:1px solid var(--rim-hair);
+    box-shadow:inset 0 1px 0 0 var(--rim-light), inset 0 -1px 0 0 var(--rim-dark), var(--shadow-2);
+  }
+
   @keyframes fadeUp { from{opacity:0;transform:translateY(9px);} to{opacity:1;transform:translateY(0);} }
   @keyframes pingDot { 0%{transform:scale(1);opacity:.7;} 70%,100%{transform:scale(2.4);opacity:0;} }
   @keyframes bounce { 0%,60%,100%{transform:translateY(0);} 30%{transform:translateY(-6px);} }
   @keyframes spin { to{transform:rotate(360deg);} }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;} }
 
   /* ---------- 공통 컴포넌트 ---------- */
   .glass-btn {
-    border:1px solid rgba(255,255,255,0.7); background:rgba(255,255,255,0.5); border-radius:11px;
-    display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; transition:all .16s;
+    border:1px solid var(--rim-hair); background:var(--fill-1); border-radius:var(--r-sm);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fg-2); transition:all .16s;
+    backdrop-filter:blur(var(--blur)); -webkit-backdrop-filter:blur(var(--blur));
   }
-  .glass-btn:hover { background:rgba(255,255,255,0.85); color:#334155; }
+  .glass-btn:hover { background:var(--fill-2); color:var(--fg-1); }
   .primary-btn {
     display:flex; align-items:center; justify-content:center; gap:8px; border:none; cursor:pointer;
-    background:linear-gradient(135deg,rgba(99,102,241,0.96),rgba(79,70,229,0.96)); color:#fff;
-    border-radius:13px; font:600 13px/1 'Inter','Noto Sans KR'; box-shadow:0 10px 22px -10px rgba(79,70,229,0.7); transition:transform .16s;
+    background:var(--accent-grad); color:#2a0d18;
+    border-radius:var(--r-sm); font:600 13px/1 var(--font-sans); box-shadow:var(--accent-glow),var(--shadow-1); transition:transform .16s var(--spring),filter .16s;
   }
-  .primary-btn:hover { transform:translateY(-1px); }
-  .primary-btn:disabled { opacity:.55; cursor:not-allowed; transform:none; }
+  .primary-btn:hover { transform:translateY(-1px); filter:brightness(1.05); }
+  .primary-btn:disabled { opacity:.5; cursor:not-allowed; transform:none; filter:none; }
   .field {
-    width:100%; background:rgba(255,255,255,0.6); border:1px solid rgba(255,255,255,0.8); border-radius:12px;
-    padding:11px 13px; font:400 13.5px/1.5 'Inter','Noto Sans KR'; color:#1e293b; outline:none; transition:border .16s;
+    width:100%; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:var(--r-sm);
+    padding:11px 13px; font:400 13.5px/1.5 var(--font-sans); color:var(--fg-1); outline:none; transition:border .16s;
   }
-  .field:focus { border-color:rgba(99,102,241,0.55); }
-  .chip { font:600 9.5px/1 'Inter'; letter-spacing:.03em; padding:3px 7px; border-radius:6px; }
+  .field:focus { border-color:color-mix(in srgb, var(--accent-pink) 55%, transparent); }
+  .chip { font:600 9.5px/1 var(--font-sans); letter-spacing:.03em; padding:3px 7px; border-radius:6px; }
   .hidden { display:none !important; }
 
   /* ---------- 앱 윈도우 ---------- */
-  #shell { min-height:100vh; height:100vh; display:flex; align-items:center; justify-content:center; padding:26px; }
+  #shell { min-height:100vh; height:100vh; display:flex; align-items:center; justify-content:center; padding:22px; }
   #appWindow {
-    width:100%; max-width:1340px; height:min(884px,92vh); display:flex; flex-direction:column;
-    border-radius:14px; overflow:hidden; background:#f4f7fc; position:relative;
-    box-shadow:0 44px 130px -34px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.07);
+    width:100%; max-width:1340px; height:min(884px,94vh); display:flex; flex-direction:column;
+    border-radius:var(--r-xl); overflow:hidden; position:relative;
+    background:var(--glass-chrome); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+    border:1px solid var(--rim-hair);
+    box-shadow:var(--shadow-3), inset 0 1px 0 var(--rim-light);
   }
   @media (max-width:820px) {
     #shell { padding:0; }
-    #appWindow { max-width:none; height:100vh; border-radius:0; }
+    #appWindow { max-width:none; height:100vh; height:100dvh; border-radius:0; border:none; }
+    #titlebar { padding-top:env(safe-area-inset-top); height:calc(46px + env(safe-area-inset-top)); flex-basis:calc(46px + env(safe-area-inset-top)); }
+    #composerWrap { padding-bottom:calc(12px + env(safe-area-inset-bottom)) !important; }
+    .modal-back { padding:0; }
+    .modal-back .modal-card { max-width:none !important; width:100% !important; height:100%; max-height:none !important; border-radius:0 !important; }
+    #promptModal .modal-card { height:auto !important; border-radius:var(--r-lg) !important; width:calc(100% - 28px) !important; }
+    #modelMenu { width:min(342px, calc(100vw - 24px)); max-height:60vh; }
+    .msg-wrap { padding:0 14px; }
+    #composerWrap { padding-left:12px !important; padding-right:12px !important; }
   }
 
   /* 타이틀바 */
   #titlebar {
     height:46px; flex:0 0 46px; display:flex; align-items:center; justify-content:space-between;
-    background:rgba(255,255,255,0.62); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
-    border-bottom:1px solid rgba(255,255,255,0.65); position:relative; z-index:40; padding-left:14px;
+    background:transparent; border-bottom:1px solid var(--rim-hair); position:relative; z-index:40; padding-left:14px;
   }
-  .brand-mini { width:22px; height:22px; border-radius:7px; background:linear-gradient(135deg,#6366f1,#22d3ee); display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px -3px rgba(99,102,241,0.6); }
-  .tb-btn { width:46px; height:100%; border:none; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#475569; transition:background .15s; }
-  .tb-btn:hover { background:rgba(15,23,42,0.06); }
+  .brand-mini { width:24px; height:24px; border-radius:8px; background:var(--accent-grad); display:flex; align-items:center; justify-content:center; box-shadow:var(--accent-glow); }
+  .tb-btn { width:46px; height:100%; border:none; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fg-2); transition:background .15s; }
+  .tb-btn:hover { background:var(--fill-2); color:var(--fg-1); }
   .tb-btn.danger:hover { background:#e81123; color:#fff; }
 
-  /* 앱 바디 + 블롭 */
+  /* 앱 바디 + 글로우 */
   #appBody { flex:1; display:flex; min-height:0; position:relative; }
   .blobs { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
   .blob { position:absolute; border-radius:50%; }
@@ -86,157 +151,157 @@
   /* ---------- 사이드바 ---------- */
   #sidebar {
     display:flex; flex-direction:column; min-height:0; width:262px; flex:0 0 262px;
-    background:rgba(255,255,255,0.46); backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px);
-    border-right:1px solid rgba(255,255,255,0.65); z-index:30; transition:transform .32s cubic-bezier(.4,0,.2,1);
+    background:var(--glass-thin); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+    border-right:1px solid var(--rim-hair); z-index:30; transition:transform .32s var(--ease);
   }
   @media (max-width:820px) {
-    #sidebar { position:absolute; left:0; top:0; bottom:0; transform:translateX(-100%); box-shadow:0 0 60px rgba(15,23,42,.25); }
+    #sidebar { position:absolute; left:0; top:0; bottom:0; transform:translateX(-100%); box-shadow:var(--shadow-3); background:var(--glass-chrome); }
     #sidebar.open { transform:translateX(0); }
   }
-  #sbOverlay { position:absolute; inset:0; background:rgba(15,23,42,0.18); backdrop-filter:blur(2px); z-index:29; }
+  #sbOverlay { position:absolute; inset:0; background:rgba(5,8,20,.4); backdrop-filter:blur(2px); z-index:29; }
 
-  .seg { display:flex; background:rgba(255,255,255,0.45); border:1px solid rgba(255,255,255,0.7); border-radius:11px; padding:3px; gap:3px; }
-  .seg button { flex:1; border:none; background:transparent; padding:7px 0; border-radius:8px; font:600 11.5px/1 'Noto Sans KR'; color:#94a3b8; cursor:pointer; transition:all .15s; }
-  .seg button.on { background:#fff; color:#4f46e5; box-shadow:0 3px 8px -4px rgba(31,38,135,0.3); }
+  .seg { display:flex; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:var(--r-sm); padding:3px; gap:3px; }
+  .seg button { flex:1; border:none; background:transparent; padding:7px 0; border-radius:9px; font:600 11.5px/1 var(--font-sans); color:var(--fg-3); cursor:pointer; transition:all .15s; }
+  .seg button.on { background:var(--fill-strong); color:var(--fg-1); box-shadow:var(--shadow-1); }
 
-  .sb-label { font:600 10px/1 'Inter','Noto Sans KR'; letter-spacing:.08em; color:#94a3b8; text-transform:uppercase; }
+  .sb-label { font:600 10px/1 var(--font-sans); letter-spacing:.08em; color:var(--fg-3); text-transform:uppercase; }
   .conv-item {
     width:100%; display:flex; align-items:center; gap:10px; padding:9px 10px; margin-bottom:2px;
-    border:1px solid transparent; background:transparent; border-radius:11px; cursor:pointer; text-align:left; position:relative;
+    border:1px solid transparent; background:transparent; border-radius:var(--r-sm); cursor:pointer; text-align:left; position:relative;
   }
-  .conv-item:hover { background:rgba(255,255,255,0.55); }
-  .conv-item.active { background:rgba(255,255,255,0.72); border-color:rgba(255,255,255,0.9); box-shadow:0 6px 16px -10px rgba(31,38,135,0.25); }
+  .conv-item:hover { background:var(--fill-1); }
+  .conv-item.active { background:var(--fill-2); border-color:var(--rim-hair); box-shadow:var(--shadow-1); }
   .conv-dot { width:8px; height:8px; flex:0 0 8px; border-radius:50%; }
-  .conv-title { font:600 12.5px/1.3 'Inter','Noto Sans KR'; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .conv-sub { font:400 10.5px/1.3 'Inter','Noto Sans KR'; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .conv-title { font:600 12.5px/1.3 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .conv-sub { font:400 10.5px/1.3 var(--font-sans); color:var(--fg-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .conv-acts { display:none; gap:2px; flex-shrink:0; }
   .conv-item:hover .conv-acts { display:flex; }
-  .mini-act { width:22px; height:22px; border:none; background:transparent; border-radius:7px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#94a3b8; }
-  .mini-act:hover { background:rgba(15,23,42,0.07); color:#475569; }
-  .mini-act.danger:hover { color:#ef4444; background:rgba(239,68,68,0.1); }
+  .mini-act { width:22px; height:22px; border:none; background:transparent; border-radius:7px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fg-3); }
+  .mini-act:hover { background:var(--fill-2); color:var(--fg-1); }
+  .mini-act.danger:hover { color:#fff; background:var(--danger); }
 
   .proj-item {
     width:100%; display:flex; align-items:center; gap:9px; padding:8px 10px; margin-bottom:2px;
-    border:1px solid transparent; background:transparent; border-radius:11px; cursor:pointer; text-align:left;
+    border:1px solid transparent; background:transparent; border-radius:var(--r-sm); cursor:pointer; text-align:left;
   }
-  .proj-item:hover { background:rgba(255,255,255,0.55); }
-  .proj-item.active { background:rgba(99,102,241,0.1); border-color:rgba(99,102,241,0.25); }
+  .proj-item:hover { background:var(--fill-1); }
+  .proj-item.active { background:var(--accent-grad-soft); border-color:color-mix(in srgb, var(--accent-pink) 30%, transparent); }
 
   /* ---------- 채팅 컬럼 ---------- */
   #chatCol { flex:1; min-width:0; display:flex; flex-direction:column; position:relative; z-index:5; }
   #chatHeader {
     flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 22px;
-    border-bottom:1px solid rgba(255,255,255,0.5); background:rgba(255,255,255,0.3);
-    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); position:relative; z-index:25;
+    border-bottom:1px solid var(--rim-hair); background:transparent; position:relative; z-index:25;
   }
-  #chatTitle { margin:0; font:700 16px/1.2 'Noto Sans KR'; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #chatTitle { margin:0; font:700 16px/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   /* 모델 드롭다운 */
   #modelMenu {
     position:absolute; top:calc(100% + 9px); right:0; width:342px; max-height:440px; overflow-y:auto;
-    background:rgba(255,255,255,0.9); backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px);
-    border:1px solid rgba(255,255,255,0.9); border-radius:18px; box-shadow:0 28px 64px -22px rgba(31,38,135,0.42);
+    background:var(--glass-chrome); backdrop-filter:blur(var(--blur-thick,40px)) saturate(var(--sat)); -webkit-backdrop-filter:blur(40px) saturate(var(--sat));
+    border:1px solid var(--rim-hair); border-radius:var(--r-lg); box-shadow:var(--shadow-3), inset 0 1px 0 var(--rim-light);
     padding:9px; z-index:70; animation:fadeUp .18s;
   }
-  .mm-item { width:100%; display:flex; align-items:center; gap:11px; padding:9px 10px; border:none; background:transparent; border-radius:11px; cursor:pointer; text-align:left; margin-bottom:1px; }
-  .mm-item:hover { background:rgba(99,102,241,0.08); }
+  .mm-item { width:100%; display:flex; align-items:center; gap:11px; padding:9px 10px; border:none; background:transparent; border-radius:var(--r-sm); cursor:pointer; text-align:left; margin-bottom:1px; }
+  .mm-item:hover { background:var(--fill-2); }
 
   /* 메시지 */
   #msgScroll { flex:1; overflow-y:auto; min-height:0; padding:24px 0 8px; }
   .msg-wrap { max-width:840px; margin:0 auto; padding:0 26px; display:flex; flex-direction:column; gap:24px; }
   .bubble-user {
-    padding:13px 17px; border-radius:20px 20px 6px 20px; color:#fff;
-    background:linear-gradient(135deg,rgba(99,102,241,0.96),rgba(79,70,229,0.97));
-    box-shadow:0 12px 28px -14px rgba(79,70,229,0.65);
-    font:400 14.5px/1.7 'Inter','Noto Sans KR'; white-space:pre-wrap; word-break:break-word;
+    padding:13px 17px; border-radius:var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg); color:var(--fg-1);
+    background:var(--accent-grad-soft); border:1px solid color-mix(in srgb, var(--accent-pink) 28%, transparent);
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    box-shadow:var(--shadow-1), inset 0 1px 0 var(--rim-light);
+    font:400 14.5px/1.7 var(--font-sans); white-space:pre-wrap; word-break:break-word;
   }
   .card-ai {
-    padding:15px 18px; background:rgba(255,255,255,0.56); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
-    border:1px solid rgba(255,255,255,0.72); border-radius:6px 20px 20px 20px;
-    box-shadow:0 12px 32px -18px rgba(31,38,135,0.2);
+    padding:15px 18px; background:var(--glass); backdrop-filter:blur(16px) saturate(var(--sat)); -webkit-backdrop-filter:blur(16px) saturate(var(--sat));
+    border:1px solid var(--rim-hair); border-radius:var(--r-sm) var(--r-lg) var(--r-lg) var(--r-lg);
+    box-shadow:var(--shadow-2), inset 0 1px 0 var(--rim-light);
   }
   .attach-card {
-    display:flex; align-items:center; gap:9px; padding:8px 12px; background:rgba(255,255,255,0.6);
-    border:1px solid rgba(255,255,255,0.8); border-radius:13px; box-shadow:0 6px 18px -10px rgba(31,38,135,0.25);
+    display:flex; align-items:center; gap:9px; padding:8px 12px; background:var(--fill-1);
+    border:1px solid var(--rim-hair); border-radius:var(--r-md); box-shadow:var(--shadow-1);
   }
   .msg-fade { animation:fadeUp .25s; }
 
   /* 마크다운 콘텐츠 */
-  .md { font:400 14.5px/1.8 'Inter','Noto Sans KR'; color:#334155; word-break:break-word; }
+  .md { font:400 14.5px/1.8 var(--font-sans); color:var(--fg-1); word-break:break-word; }
   .md > *:first-child { margin-top:0; }
   .md > *:last-child { margin-bottom:0; }
-  .md h1 { font-size:1.35rem; font-weight:700; margin:.8rem 0 .45rem; color:#1e293b; }
-  .md h2 { font-size:1.18rem; font-weight:700; margin:.75rem 0 .4rem; color:#1e293b; }
-  .md h3 { font-size:1.04rem; font-weight:600; margin:.6rem 0 .35rem; color:#1e293b; }
-  .md p { margin:.45rem 0; }
-  .md ul { list-style:disc; padding-left:1.4rem; margin:.45rem 0; }
-  .md ol { list-style:decimal; padding-left:1.4rem; margin:.45rem 0; }
+  .md h1 { font-size:1.35rem; font-weight:700; margin:.8rem 0 .45rem; color:var(--fg-1); }
+  .md h2 { font-size:1.18rem; font-weight:700; margin:.75rem 0 .4rem; color:var(--fg-1); }
+  .md h3 { font-size:1.04rem; font-weight:600; margin:.6rem 0 .35rem; color:var(--fg-1); }
+  .md p { margin:.45rem 0; color:var(--fg-2); }
+  .md ul { list-style:disc; padding-left:1.4rem; margin:.45rem 0; color:var(--fg-2); }
+  .md ol { list-style:decimal; padding-left:1.4rem; margin:.45rem 0; color:var(--fg-2); }
   .md li { margin:.22rem 0; }
-  .md li::marker { color:#6366f1; }
-  .md code { background:rgba(15,23,42,0.07); padding:.12rem .38rem; border-radius:.35rem; font:.86em 'JetBrains Mono',monospace; color:#4338ca; }
-  .md blockquote { border-left:3px solid #6366f1; padding:2px 0 2px .9rem; color:#64748b; margin:.5rem 0; background:rgba(99,102,241,0.05); border-radius:0 8px 8px 0; }
+  .md li::marker { color:var(--accent); }
+  .md code { background:var(--fill-2); padding:.12rem .38rem; border-radius:.35rem; font:.86em var(--font-mono); color:var(--accent-coral); }
+  .md blockquote { border-left:3px solid var(--accent); padding:2px 0 2px .9rem; color:var(--fg-2); margin:.5rem 0; background:var(--accent-grad-soft); border-radius:0 8px 8px 0; }
   .md table { border-collapse:collapse; width:100%; margin:.55rem 0; font-size:.92em; }
-  .md th, .md td { border:1px solid rgba(100,116,139,0.25); padding:.42rem .6rem; text-align:left; }
-  .md th { background:rgba(255,255,255,0.5); font-weight:600; }
-  .md a { color:#4f46e5; text-decoration:underline; }
-  .md hr { border:none; border-top:1px solid rgba(100,116,139,0.25); margin:.8rem 0; }
-  .code-card { border-radius:14px; overflow:hidden; border:1px solid rgba(15,23,42,0.12); box-shadow:0 10px 26px -14px rgba(15,23,42,0.5); margin:.55rem 0; }
-  .code-head { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; background:#0f172a; border-bottom:1px solid rgba(255,255,255,0.08); }
-  .code-card pre { margin:0; padding:15px 18px; background:#0f172a; overflow-x:auto; }
-  .code-card pre code { background:none; padding:0; font:13px/1.75 'JetBrains Mono',ui-monospace,monospace; color:#cbd5e1; white-space:pre; }
-  .copy-btn { display:flex; align-items:center; gap:5px; padding:4px 9px; background:rgba(255,255,255,0.08); border:none; border-radius:7px; cursor:pointer; font:500 11px/1 'Inter','Noto Sans KR'; color:#cbd5e1; }
+  .md th, .md td { border:1px solid var(--rim-hair); padding:.42rem .6rem; text-align:left; color:var(--fg-2); }
+  .md th { background:var(--fill-1); font-weight:600; color:var(--fg-1); }
+  .md a { color:var(--accent-pink); text-decoration:underline; }
+  .md hr { border:none; border-top:1px solid var(--rim-hair); margin:.8rem 0; }
+  .code-card { border-radius:var(--r-md); overflow:hidden; border:1px solid var(--rim-hair); box-shadow:var(--shadow-2); margin:.55rem 0; }
+  .code-head { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; background:#0b1020; border-bottom:1px solid rgba(255,255,255,0.08); }
+  .code-card pre { margin:0; padding:15px 18px; background:#0b1020; overflow-x:auto; }
+  .code-card pre code { background:none; padding:0; font:13px/1.75 var(--font-mono); color:#cbd5e1; white-space:pre; }
+  .copy-btn { display:flex; align-items:center; gap:5px; padding:4px 9px; background:rgba(255,255,255,0.08); border:none; border-radius:7px; cursor:pointer; font:500 11px/1 var(--font-sans); color:#cbd5e1; }
   .copy-btn:hover { background:rgba(255,255,255,0.16); }
 
-  .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#94a3b8; animation:bounce 1.2s infinite; }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--fg-2); animation:bounce 1.2s infinite; }
   .dot:nth-child(2) { animation-delay:.2s; } .dot:nth-child(3) { animation-delay:.4s; }
 
   /* 컴포저 */
   #composerBox {
-    background:rgba(255,255,255,0.62); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
-    border:1px solid rgba(255,255,255,0.78); border-radius:22px;
-    box-shadow:0 16px 44px -22px rgba(31,38,135,0.3); padding:11px 13px 11px 17px; transition:border .2s;
+    background:var(--glass-chrome); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+    border:1px solid var(--rim-hair); border-radius:var(--r-xl);
+    box-shadow:var(--shadow-2), inset 0 1px 0 var(--rim-light); padding:11px 13px 11px 17px; transition:border .2s;
   }
-  #composerBox.focus { border-color:rgba(99,102,241,0.5); }
-  #input { width:100%; border:none; outline:none; background:transparent; resize:none; font:400 14.5px/1.6 'Inter','Noto Sans KR'; color:#1e293b; max-height:150px; min-height:24px; padding:5px 4px; }
-  .comp-icon { width:34px; height:34px; border:none; background:transparent; border-radius:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#64748b; transition:all .15s; }
-  .comp-icon:hover { background:rgba(99,102,241,0.1); color:#6366f1; }
+  #composerBox.focus { border-color:color-mix(in srgb, var(--accent-pink) 50%, transparent); }
+  #input { width:100%; border:none; outline:none; background:transparent; resize:none; font:400 14.5px/1.6 var(--font-sans); color:var(--fg-1); max-height:150px; min-height:24px; padding:5px 4px; }
+  .comp-icon { width:34px; height:34px; border:none; background:transparent; border-radius:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fg-2); transition:all .15s; }
+  .comp-icon:hover { background:var(--fill-2); color:var(--accent); }
   .pending-chip {
     display:inline-flex; align-items:center; gap:8px; padding:6px 8px 6px 11px;
-    background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.22); border-radius:12px;
-    font:500 12px/1 'Noto Sans KR'; color:#4338ca;
+    background:var(--accent-grad-soft); border:1px solid color-mix(in srgb, var(--accent-pink) 26%, transparent); border-radius:var(--r-sm);
+    font:500 12px/1 var(--font-sans); color:var(--fg-1);
   }
-  .pending-x { width:18px; height:18px; border:none; background:rgba(99,102,241,0.15); border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#4f46e5; }
+  .pending-x { width:18px; height:18px; border:none; background:var(--fill-2); border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fg-1); }
 
   /* 드래그앤드롭 오버레이 */
   #dropOverlay {
-    position:absolute; inset:0; z-index:80; background:rgba(99,102,241,0.12); backdrop-filter:blur(6px);
+    position:absolute; inset:0; z-index:80; background:color-mix(in srgb, var(--accent-pink) 14%, transparent); backdrop-filter:blur(6px);
     display:flex; align-items:center; justify-content:center;
   }
   #dropOverlay .inner {
-    border:2.5px dashed rgba(99,102,241,0.6); border-radius:26px; padding:44px 60px; text-align:center;
-    background:rgba(255,255,255,0.72); box-shadow:0 30px 80px -30px rgba(31,38,135,0.4);
+    border:2.5px dashed color-mix(in srgb, var(--accent-pink) 60%, transparent); border-radius:var(--r-xl); padding:44px 60px; text-align:center;
+    background:var(--glass-chrome); box-shadow:var(--shadow-3);
   }
 
   /* 모달 */
-  .modal-back { position:fixed; inset:0; background:rgba(15,23,42,0.45); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; z-index:100; padding:18px; }
+  .modal-back { position:fixed; inset:0; background:rgba(5,8,20,.55); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; z-index:100; padding:18px; }
   .modal-card {
-    background:rgba(255,255,255,0.92); backdrop-filter:blur(30px); border:1px solid rgba(255,255,255,0.95);
-    border-radius:22px; box-shadow:0 40px 110px -30px rgba(15,23,42,0.55); animation:fadeUp .2s;
+    background:var(--glass-chrome); backdrop-filter:blur(40px) saturate(var(--sat)); -webkit-backdrop-filter:blur(40px) saturate(var(--sat));
+    border:1px solid var(--rim-hair); border-radius:var(--r-xl); box-shadow:var(--shadow-3), inset 0 1px 0 var(--rim-light); animation:fadeUp .2s;
   }
-  .tab-btn { padding:12px 18px; border:none; background:transparent; font:600 13px/1 'Noto Sans KR'; color:#94a3b8; cursor:pointer; border-bottom:2px solid transparent; }
-  .tab-btn.on { color:#4f46e5; border-bottom-color:#6366f1; }
-  .row-card { background:rgba(255,255,255,0.62); border:1px solid rgba(255,255,255,0.85); border-radius:13px; padding:11px 14px; }
-  .sm-btn { font:600 11.5px/1 'Noto Sans KR'; padding:6px 11px; border-radius:9px; border:1px solid; background:transparent; cursor:pointer; transition:background .15s; }
-  table.logs { width:100%; border-collapse:collapse; font:400 12px/1.5 'Inter','Noto Sans KR'; }
-  table.logs th { font:600 10.5px/1 'Inter','Noto Sans KR'; letter-spacing:.05em; text-transform:uppercase; color:#94a3b8; text-align:left; padding:8px 10px; border-bottom:1px solid rgba(100,116,139,0.2); white-space:nowrap; }
-  table.logs td { padding:8px 10px; border-bottom:1px solid rgba(100,116,139,0.1); color:#334155; vertical-align:top; }
+  .tab-btn { padding:12px 18px; border:none; background:transparent; font:600 13px/1 var(--font-sans); color:var(--fg-3); cursor:pointer; border-bottom:2px solid transparent; }
+  .tab-btn.on { color:var(--accent); border-bottom-color:var(--accent); }
+  .row-card { background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:var(--r-md); padding:11px 14px; }
+  .sm-btn { font:600 11.5px/1 var(--font-sans); padding:6px 11px; border-radius:9px; border:1px solid; background:transparent; cursor:pointer; transition:background .15s; }
+  table.logs { width:100%; border-collapse:collapse; font:400 12px/1.5 var(--font-sans); }
+  table.logs th { font:600 10.5px/1 var(--font-sans); letter-spacing:.05em; text-transform:uppercase; color:var(--fg-3); text-align:left; padding:8px 10px; border-bottom:1px solid var(--rim-hair); white-space:nowrap; }
+  table.logs td { padding:8px 10px; border-bottom:1px solid var(--rim-hair); color:var(--fg-2); vertical-align:top; }
 
   /* 토스트 */
   #toasts { position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; }
-  .toast { background:rgba(15,23,42,0.92); color:#f1f5f9; font:500 12.5px/1.4 'Noto Sans KR'; padding:10px 18px; border-radius:12px; box-shadow:0 14px 40px -12px rgba(0,0,0,0.5); animation:fadeUp .25s; max-width:80vw; }
-  .toast.err { background:rgba(153,27,27,0.94); }
+  .toast { background:rgba(10,14,30,.92); color:#f1f5f9; font:500 12.5px/1.4 var(--font-sans); padding:10px 18px; border-radius:var(--r-sm); box-shadow:var(--shadow-3); animation:fadeUp .25s; max-width:80vw; border:1px solid var(--rim-hair); }
+  .toast.err { background:rgba(120,20,30,.94); }
 
-  .spinner { width:15px; height:15px; border:2px solid rgba(99,102,241,0.25); border-top-color:#6366f1; border-radius:50%; animation:spin .7s linear infinite; }
+  .spinner { width:15px; height:15px; border:2px solid var(--fill-strong); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
 </style>
 </head>
 <body>
@@ -245,19 +310,19 @@
 <div id="loginPage" class="hidden" style="position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:90; padding:20px;">
   <div class="modal-card" style="width:100%; max-width:390px; padding:34px 32px;">
     <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:26px;">
-      <div style="width:52px; height:52px; border-radius:16px; background:linear-gradient(135deg,#6366f1,#22d3ee); display:flex; align-items:center; justify-content:center; box-shadow:0 14px 30px -10px rgba(99,102,241,0.65); margin-bottom:14px;">
+      <div style="width:52px; height:52px; border-radius:16px; background:linear-gradient(120deg,#FF8A5B,#FF5BA0); display:flex; align-items:center; justify-content:center; box-shadow:0 14px 30px -10px rgba(255,122,77,0.65); margin-bottom:14px;">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12 2.7 5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.7 12 2.7z"/></svg>
       </div>
-      <div style="font:700 19px/1.2 'Noto Sans KR'; color:#1e293b;">Gabia AI 허브</div>
-      <div style="font:600 10px/1.6 'Inter'; letter-spacing:.16em; color:#6366f1; text-transform:uppercase;">HP Engineering · Unified</div>
+      <div style="font:700 19px/1.2 var(--font-sans); color:var(--fg-1);">HP ENGINEERING · AI 허브</div>
+      <div style="font:600 10px/1.6 var(--font-sans); letter-spacing:.16em; color:var(--accent); text-transform:uppercase;">HP Engineering · Unified</div>
     </div>
-    <div id="loginErr" class="hidden" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#b91c1c; padding:10px 14px; border-radius:11px; margin-bottom:14px; font:500 12.5px/1.5 'Noto Sans KR';"></div>
+    <div id="loginErr" class="hidden" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; padding:10px 14px; border-radius:11px; margin-bottom:14px; font:500 12.5px/1.5 var(--font-sans);"></div>
     <div style="display:flex; flex-direction:column; gap:10px;">
       <input id="loginUser" type="text" placeholder="사용자명" class="field" onkeydown="if(event.key==='Enter')login()">
       <input id="loginPw" type="password" placeholder="비밀번호" class="field" onkeydown="if(event.key==='Enter')login()">
       <button onclick="login()" id="loginBtn" class="primary-btn" style="padding:13px; border-radius:13px; font-size:14px;">로그인</button>
     </div>
-    <div style="text-align:center; margin-top:18px; font:400 11px/1.5 'Noto Sans KR'; color:#94a3b8;">사내 전용 · 계정은 관리자에게 문의하세요</div>
+    <div style="text-align:center; margin-top:18px; font:400 11px/1.5 var(--font-sans); color:var(--fg-3);">사내 전용 · 계정은 관리자에게 문의하세요</div>
   </div>
 </div>
 
@@ -265,11 +330,11 @@
 <div id="resetPage" class="hidden" style="position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:90; padding:20px;">
   <div class="modal-card" style="width:100%; max-width:390px; padding:34px 32px;">
     <div style="text-align:center; margin-bottom:22px;">
-      <div style="font:700 17px/1.2 'Noto Sans KR'; color:#1e293b;">비밀번호 변경 필요</div>
-      <div style="font:400 12px/1.6 'Noto Sans KR'; color:#94a3b8; margin-top:5px;">보안을 위해 새 비밀번호를 설정해 주세요</div>
+      <div style="font:700 17px/1.2 var(--font-sans); color:var(--fg-1);">비밀번호 변경 필요</div>
+      <div style="font:400 12px/1.6 var(--font-sans); color:var(--fg-3); margin-top:5px;">보안을 위해 새 비밀번호를 설정해 주세요</div>
     </div>
-    <div id="resetErr" class="hidden" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#b91c1c; padding:10px 14px; border-radius:11px; margin-bottom:14px; font:500 12.5px/1.5 'Noto Sans KR';"></div>
-    <div id="resetOk" class="hidden" style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); color:#047857; padding:10px 14px; border-radius:11px; margin-bottom:14px; font:500 12.5px/1.5 'Noto Sans KR';"></div>
+    <div id="resetErr" class="hidden" style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; padding:10px 14px; border-radius:11px; margin-bottom:14px; font:500 12.5px/1.5 var(--font-sans);"></div>
+    <div id="resetOk" class="hidden" style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); color:#6ee7b7; padding:10px 14px; border-radius:11px; margin-bottom:14px; font:500 12.5px/1.5 var(--font-sans);"></div>
     <div style="display:flex; flex-direction:column; gap:10px;">
       <input id="curPw" type="password" placeholder="현재 비밀번호" class="field">
       <input id="newPw" type="password" placeholder="새 비밀번호 (8자 이상)" class="field">
@@ -290,13 +355,16 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
       </button>
       <div class="brand-mini">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12 2.7 5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.7 12 2.7z"/></svg>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2a0d18" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12 2.7 5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.7 12 2.7z"/></svg>
       </div>
-      <span style="font:600 12.5px/1 'Inter','Noto Sans KR'; color:#334155;">Gabia AI 허브</span>
-      <span style="width:1px; height:13px; background:rgba(100,116,139,0.3);"></span>
-      <span style="font:500 12px/1 'Inter','Noto Sans KR'; color:#94a3b8;">통합 AI 대화</span>
+      <span style="font:600 12.5px/1 var(--font-sans); color:var(--fg-1);">HP ENGINEERING</span>
+      <span style="width:1px; height:13px; background:var(--rim-hair);"></span>
+      <span style="font:500 12px/1 var(--font-sans); color:var(--fg-3);">AI 허브</span>
     </div>
     <div style="display:flex; align-items:stretch; height:100%;">
+      <button id="themeBtn" class="tb-btn" title="테마 전환" onclick="toggleTheme()">
+        <svg id="themeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </button>
       <button id="adminTbBtn" class="tb-btn hidden" title="관리자 패널" onclick="openAdmin()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -308,23 +376,21 @@
 
   <!-- 앱 바디 -->
   <div id="appBody">
-    <!-- liquid pastel blobs -->
+    <!-- 코랄→핑크 글로우 (딥네이비 위 유일한 채도) -->
     <div class="blobs">
-      <div class="blob" style="top:-6%; left:-4%; width:460px; height:460px; background:linear-gradient(135deg,#fbcfe8,#fde6c7); opacity:.4; filter:blur(70px); animation:blobA 20s infinite ease-in-out;"></div>
-      <div class="blob" style="bottom:-12%; right:-2%; width:560px; height:560px; background:linear-gradient(135deg,#bae6fd,#c7d2fe); opacity:.42; filter:blur(76px); animation:blobB 24s infinite ease-in-out;"></div>
-      <div class="blob" style="top:38%; left:42%; width:420px; height:420px; background:linear-gradient(135deg,#ddd6fe,#fbcfe8); opacity:.34; filter:blur(72px); animation:blobC 22s infinite ease-in-out;"></div>
-      <div class="blob" style="top:-4%; right:26%; width:340px; height:340px; background:linear-gradient(135deg,#bbf7d0,#a5f3fc); opacity:.28; filter:blur(64px); animation:blobA 27s infinite ease-in-out;"></div>
+      <div class="blob" style="bottom:-14%; right:-6%; width:560px; height:560px; background:radial-gradient(circle,#FF5BA0 0%,transparent 68%); opacity:.22; filter:blur(60px);"></div>
+      <div class="blob" style="top:-10%; left:-6%; width:420px; height:420px; background:radial-gradient(circle,#FF8A5B 0%,transparent 68%); opacity:.16; filter:blur(60px);"></div>
     </div>
 
     <!-- ===== 사이드바 ===== -->
     <aside id="sidebar">
       <div style="padding:15px 16px 10px; display:flex; align-items:center; gap:11px;">
-        <div style="width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg,#6366f1,#22d3ee); display:flex; align-items:center; justify-content:center; box-shadow:0 8px 18px -6px rgba(99,102,241,0.6);">
+        <div style="width:34px; height:34px; border-radius:11px; background:linear-gradient(120deg,#FF8A5B,#FF5BA0); display:flex; align-items:center; justify-content:center; box-shadow:0 8px 18px -6px rgba(255,122,77,0.6);">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12 2.7 5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.7 12 2.7z"/></svg>
         </div>
         <div style="flex:1;">
-          <div style="font:700 14px/1.1 'Inter','Noto Sans KR'; color:#1e293b;">AI 허브 챗</div>
-          <div style="font:600 9px/1.4 'Inter'; letter-spacing:.14em; color:#6366f1; text-transform:uppercase;">Gabia · Unified</div>
+          <div style="font:700 14px/1.1 var(--font-sans); color:var(--fg-1);">AI 허브 챗</div>
+          <div style="font:600 9px/1.4 var(--font-sans); letter-spacing:.14em; color:var(--accent); text-transform:uppercase;">Gabia · Unified</div>
         </div>
       </div>
 
@@ -336,9 +402,9 @@
       </div>
 
       <div style="padding:0 14px 8px;">
-        <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.72); border-radius:11px;">
+        <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:11px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-          <input id="searchBox" placeholder="대화 검색" oninput="renderSidebar()" style="border:none; background:transparent; outline:none; font:400 12.5px/1 'Inter','Noto Sans KR'; color:#334155; width:100%;">
+          <input id="searchBox" placeholder="대화 검색" oninput="renderSidebar()" style="border:none; background:transparent; outline:none; font:400 12.5px/1 var(--font-sans); color:var(--fg-1); width:100%;">
         </div>
       </div>
 
@@ -354,7 +420,7 @@
         <div id="projSection">
           <div style="padding:8px 6px 5px; display:flex; align-items:center; justify-content:space-between;">
             <span class="sb-label">프로젝트</span>
-            <button onclick="createProjectPrompt()" title="새 프로젝트" class="mini-act" style="color:#6366f1;">
+            <button onclick="createProjectPrompt()" title="새 프로젝트" class="mini-act" style="color:var(--accent);">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
           </div>
@@ -365,30 +431,30 @@
       </div>
 
       <!-- 푸터 -->
-      <div style="padding:12px 14px; border-top:1px solid rgba(255,255,255,0.55);">
+      <div style="padding:12px 14px; border-top:1px solid var(--rim-hair);">
         <div style="display:flex; align-items:center; gap:9px; padding:8px 11px; background:rgba(16,185,129,0.09); border:1px solid rgba(16,185,129,0.22); border-radius:12px; margin-bottom:10px;">
           <span style="position:relative; width:8px; height:8px; flex:0 0 8px;">
             <span style="position:absolute; inset:0; border-radius:50%; background:#10b981; animation:pingDot 1.8s infinite;"></span>
             <span style="position:absolute; inset:0; border-radius:50%; background:#10b981;"></span>
           </span>
           <div style="flex:1;">
-            <div style="font:600 11.5px/1.2 'Inter','Noto Sans KR'; color:#047857;">AI 허브 연결됨</div>
-            <div id="statusSub" style="font:400 10px/1.3 'Inter','Noto Sans KR'; color:#10b981;">모델 사용 가능</div>
+            <div style="font:600 11.5px/1.2 var(--font-sans); color:#6ee7b7;">AI 허브 연결됨</div>
+            <div id="statusSub" style="font:400 10px/1.3 var(--font-sans); color:#10b981;">모델 사용 가능</div>
           </div>
         </div>
         <div style="margin-bottom:12px;">
-          <div style="display:flex; justify-content:space-between; font:600 10.5px/1 'Inter','Noto Sans KR'; color:#64748b; margin-bottom:6px;">
+          <div style="display:flex; justify-content:space-between; font:600 10.5px/1 var(--font-sans); color:var(--fg-2); margin-bottom:6px;">
             <span>이번 달 사용량</span><span id="usageText">-</span>
           </div>
           <div style="height:6px; background:rgba(148,163,184,0.25); border-radius:999px; overflow:hidden;">
-            <div id="usageBar" style="height:100%; width:0%; background:linear-gradient(90deg,#6366f1,#22d3ee); border-radius:999px; transition:width .5s;"></div>
+            <div id="usageBar" style="height:100%; width:0%; background:linear-gradient(90deg,#FF8A5B,#FF5BA0); border-radius:999px; transition:width .5s;"></div>
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
-          <div id="avatar" style="width:32px; height:32px; flex:0 0 32px; border-radius:10px; background:linear-gradient(135deg,#475569,#94a3b8); display:flex; align-items:center; justify-content:center; font:700 12px/1 'Noto Sans KR'; color:#fff;"></div>
+          <div id="avatar" style="width:32px; height:32px; flex:0 0 32px; border-radius:10px; background:linear-gradient(135deg,#475569,#94a3b8); display:flex; align-items:center; justify-content:center; font:700 12px/1 var(--font-sans); color:#fff;"></div>
           <div style="flex:1; min-width:0;">
-            <div id="uname" style="font:600 12.5px/1.2 'Noto Sans KR'; color:#1e293b;"></div>
-            <div id="urole" style="font:400 10.5px/1.3 'Inter','Noto Sans KR'; color:#94a3b8;"></div>
+            <div id="uname" style="font:600 12.5px/1.2 var(--font-sans); color:var(--fg-1);"></div>
+            <div id="urole" style="font:400 10.5px/1.3 var(--font-sans); color:var(--fg-3);"></div>
           </div>
           <button id="adminBtn" class="mini-act hidden" title="관리자 패널" onclick="openAdmin()" style="width:30px; height:30px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -410,15 +476,15 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </button>
             </div>
-            <div id="chatMeta" style="font:400 11.5px/1.3 'Inter','Noto Sans KR'; color:#94a3b8; margin-top:2px;">새 대화를 시작하세요</div>
+            <div id="chatMeta" style="font:400 11.5px/1.3 var(--font-sans); color:var(--fg-3); margin-top:2px;">새 대화를 시작하세요</div>
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:9px; flex-shrink:0;">
           <!-- 모델 셀렉터 -->
           <div style="position:relative;">
-            <button onclick="toggleModelMenu(event)" id="modelBtn" style="display:flex; align-items:center; gap:9px; padding:8px 13px; background:rgba(255,255,255,0.66); border:1px solid rgba(255,255,255,0.82); border-radius:13px; box-shadow:0 5px 16px -9px rgba(31,38,135,0.3); cursor:pointer;">
-              <span id="modelDot" style="width:9px; height:9px; border-radius:50%; background:#6366f1;"></span>
-              <span id="modelName" style="font:600 13px/1 'Inter','Noto Sans KR'; color:#334155;">Claude Sonnet 4.6</span>
+            <button onclick="toggleModelMenu(event)" id="modelBtn" style="display:flex; align-items:center; gap:9px; padding:8px 13px; background:var(--fill-2); border:1px solid var(--rim-hair); border-radius:13px; box-shadow:0 5px 16px -9px rgba(31,38,135,0.3); cursor:pointer;">
+              <span id="modelDot" style="width:9px; height:9px; border-radius:50%; background:#FF7A4D;"></span>
+              <span id="modelName" style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">Claude Sonnet 4.6</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="modelMenu" class="hidden"></div>
@@ -458,20 +524,20 @@
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 </button>
                 <span style="width:1px; height:18px; background:rgba(100,116,139,0.22); margin:0 4px;"></span>
-                <div style="display:flex; align-items:center; gap:7px; padding:6px 10px; background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.7); border-radius:10px;">
-                  <span id="compModelDot" style="width:7px; height:7px; border-radius:50%; background:#6366f1;"></span>
-                  <span id="compModelName" style="font:600 11.5px/1 'Inter','Noto Sans KR'; color:#475569;">Claude Sonnet 4.6</span>
+                <div style="display:flex; align-items:center; gap:7px; padding:6px 10px; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:10px;">
+                  <span id="compModelDot" style="width:7px; height:7px; border-radius:50%; background:#FF7A4D;"></span>
+                  <span id="compModelName" style="font:600 11.5px/1 var(--font-sans); color:var(--fg-2);">Claude Sonnet 4.6</span>
                 </div>
               </div>
               <div style="display:flex; align-items:center; gap:11px;">
-                <span style="font:400 11px/1 'Noto Sans KR'; color:#94a3b8;">Enter 전송</span>
+                <span style="font:400 11px/1 var(--font-sans); color:var(--fg-3);">Enter 전송</span>
                 <button id="sendBtn" onclick="sendMsg()" class="primary-btn" style="width:40px; height:40px; border-radius:13px; padding:0;">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                 </button>
               </div>
             </div>
           </div>
-          <div style="text-align:center; margin-top:9px; font:400 11px/1.4 'Noto Sans KR'; color:#94a3b8;">응답은 선택한 모델에 따라 달라질 수 있어요 · 파일을 창에 끌어다 놓으면 첨부됩니다</div>
+          <div style="text-align:center; margin-top:9px; font:400 11px/1.4 var(--font-sans); color:var(--fg-3);">응답은 선택한 모델에 따라 달라질 수 있어요 · 파일을 창에 끌어다 놓으면 첨부됩니다</div>
         </div>
       </div>
     </div>
@@ -479,9 +545,9 @@
     <!-- 드래그앤드롭 오버레이 -->
     <div id="dropOverlay" class="hidden">
       <div class="inner">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <div style="font:700 16px/1.3 'Noto Sans KR'; color:#4338ca;">파일을 놓아 첨부하기</div>
-        <div style="font:400 12px/1.6 'Noto Sans KR'; color:#6366f1; margin-top:4px;">모든 형식 지원 · 최대 25MB</div>
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#FF7A4D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div style="font:700 16px/1.3 var(--font-sans); color:var(--accent);">파일을 놓아 첨부하기</div>
+        <div style="font:400 12px/1.6 var(--font-sans); color:var(--accent); margin-top:4px;">모든 형식 지원 · 최대 50MB</div>
       </div>
     </div>
   </div>
@@ -497,7 +563,7 @@
 <div id="adminModal" class="modal-back hidden" onclick="if(event.target===this)closeAdmin()">
   <div class="modal-card" style="width:100%; max-width:880px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
     <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 22px 0;">
-      <div style="font:700 16px/1.2 'Noto Sans KR'; color:#1e293b;">관리자 패널</div>
+      <div style="font:700 16px/1.2 var(--font-sans); color:var(--fg-1);">관리자 패널</div>
       <button class="mini-act" onclick="closeAdmin()" style="width:30px; height:30px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
       </button>
@@ -505,6 +571,8 @@
     <div style="display:flex; border-bottom:1px solid rgba(100,116,139,0.15); padding:0 14px; margin-top:6px; overflow-x:auto;">
       <button id="tabUsers" class="tab-btn on" onclick="switchTab('users')">사용자</button>
       <button id="tabKeys" class="tab-btn" onclick="switchTab('keys')">API 키</button>
+      <button id="tabRoutes" class="tab-btn" onclick="switchTab('routes')">모델 라우팅</button>
+      <button id="tabInteg" class="tab-btn" onclick="switchTab('integ')">연동·스킬</button>
       <button id="tabConvs" class="tab-btn hidden" onclick="switchTab('convs')">대화 조회</button>
       <button id="tabLogs" class="tab-btn hidden" onclick="switchTab('logs')">사용 로그</button>
     </div>
@@ -515,10 +583,10 @@
 <!-- ================= 입력 프롬프트 모달 ================= -->
 <div id="promptModal" class="modal-back hidden" onclick="if(event.target===this)closePrompt(null)">
   <div class="modal-card" style="width:100%; max-width:420px; padding:24px;">
-    <div id="promptTitle" style="font:700 15px/1.3 'Noto Sans KR'; color:#1e293b; margin-bottom:14px;"></div>
+    <div id="promptTitle" style="font:700 15px/1.3 var(--font-sans); color:var(--fg-1); margin-bottom:14px;"></div>
     <div id="promptFields" style="display:flex; flex-direction:column; gap:9px;"></div>
     <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
-      <button onclick="closePrompt(null)" class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:#64748b; padding:9px 16px;">취소</button>
+      <button onclick="closePrompt(null)" class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:var(--fg-2); padding:9px 16px;">취소</button>
       <button id="promptOkBtn" class="primary-btn" style="padding:9px 18px; border-radius:10px;">확인</button>
     </div>
   </div>
@@ -529,43 +597,23 @@
 <script>
 'use strict';
 
-/* ============ 모델 메타 ============ */
-const PROVIDERS = {
-  anthropic:  { label:'Anthropic',  color:'#e0784f' },
-  openai:     { label:'OpenAI',     color:'#10a37f' },
-  deepseek:   { label:'DeepSeek',   color:'#4d6bfe' },
-  google:     { label:'Google',     color:'#4285f4' },
-  alibaba:    { label:'Alibaba',    color:'#ff6a00' },
-  meta:       { label:'Meta',       color:'#0668e1' },
-  moonshot:   { label:'Moonshot',   color:'#16b8c9' },
-  minimax:    { label:'MiniMax',    color:'#f23f5d' },
-  perplexity: { label:'Perplexity', color:'#20b8cd' },
-  zai:        { label:'ZAI',        color:'#7c3aed' },
-  xiaomi:     { label:'Xiaomi',     color:'#ff6900' },
+/* ============ 모델 메타 (서버의 모델 라우팅 설정에서 로드) ============ */
+const PROVIDER_COLORS = {
+  anthropic:'#e0784f', gabia:'#6366f1', openai:'#10a37f',
+  azure:'#0078d4', gemini:'#4285f4', bedrock:'#ff9900',
 };
-const MODELS = {
-  sonnet:       { label:'Claude Sonnet 4.6', provider:'anthropic',  desc:'균형잡힌 성능', tag:'추천' },
-  opus:         { label:'Claude Opus 4.6',   provider:'anthropic',  desc:'최고 성능' },
-  haiku:        { label:'Claude Haiku 4.5',  provider:'anthropic',  desc:'빠름 · 저렴' },
-  'gpt-5-pro':  { label:'GPT-5 Pro',         provider:'openai',     desc:'OpenAI 최고 성능' },
-  'gpt-5':      { label:'GPT-5',             provider:'openai',     desc:'OpenAI 균형' },
-  'o4-mini':    { label:'o4-mini',           provider:'openai',     desc:'빠른 추론' },
-  codex:        { label:'GPT Codex',         provider:'openai',     desc:'코딩 특화' },
-  deepseek:     { label:'DeepSeek R1',       provider:'deepseek',   desc:'오픈소스 추론' },
-  gemini:       { label:'Gemini Flash',      provider:'google',     desc:'Google 빠름' },
-  qwen:         { label:'Qwen3.5 122B',      provider:'alibaba',    desc:'Alibaba 대형' },
-  'qwen-plus':  { label:'Qwen3.6 Plus',      provider:'alibaba',    desc:'Alibaba 최신' },
-  llama:        { label:'Llama 3.2 Vision',  provider:'meta',       desc:'Meta 비전' },
-  kimi:         { label:'Kimi K2',           provider:'moonshot',   desc:'Moonshot 최신' },
-  'kimi-think': { label:'Kimi K2 Think',     provider:'moonshot',   desc:'추론 특화' },
-  minimax:      { label:'MiniMax M2',        provider:'minimax',    desc:'MiniMax 최신' },
-  sonar:        { label:'Sonar Pro',         provider:'perplexity', desc:'웹 검색 포함' },
-  'sonar-deep': { label:'Sonar Research',    provider:'perplexity', desc:'심층 리서치' },
-  glm:          { label:'GLM-4.7',           provider:'zai',        desc:'ZAI 최신' },
-  mimo:         { label:'MiMo Pro',          provider:'xiaomi',     desc:'Xiaomi AI' },
-};
-const modelColor = k => (PROVIDERS[(MODELS[k]||{}).provider]||{}).color || '#6366f1';
+const ROLE_LABELS = { superadmin:'최고 관리자', admin:'관리자', manager:'담당자', user:'일반 사용자' };
+const ROLE_ORDER = ['user','manager','admin','superadmin'];
+let MODELS = {};        // key → {label, provider, provider_label, desc}
+const modelColor = k => PROVIDER_COLORS[(MODELS[k]||{}).provider] || '#6366f1';
 const modelLabel = k => (MODELS[k]||{}).label || k || 'AI';
+
+async function loadModels(){
+  const list = await api('GET','/chat/models') || [];
+  MODELS = {};
+  list.forEach(m => { MODELS[m.key] = {label:m.label, provider:m.provider, provider_label:m.provider_label, desc:m.description}; });
+  if (!MODELS[currentModel]) currentModel = list.length ? list[0].key : 'sonnet';
+}
 
 /* ============ 상태 ============ */
 let token = localStorage.getItem('token');
@@ -613,7 +661,7 @@ function enhanceCode(container){
     head.className = 'code-head';
     head.innerHTML = `<div style="display:flex; align-items:center; gap:8px;">
         <span style="display:flex; gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:#ff5f56;"></span><span style="width:9px;height:9px;border-radius:50%;background:#ffbd2e;"></span><span style="width:9px;height:9px;border-radius:50%;background:#27c93f;"></span></span>
-        <span style="font:500 11px/1 'JetBrains Mono',monospace; color:#94a3b8; margin-left:4px;">${esc(lang||'code')}</span>
+        <span style="font:500 11px/1 'JetBrains Mono',monospace; color:var(--fg-3); margin-left:4px;">${esc(lang||'code')}</span>
       </div>`;
     const btn = document.createElement('button');
     btn.className = 'copy-btn';
@@ -681,6 +729,25 @@ async function apiDownload(path, fallbackName){
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
 
+/* ============ 테마 ============ */
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('theme', t);
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', t==='light' ? '#e9e7ef' : '#0B1026');
+  const icon=document.getElementById('themeIcon');
+  if(icon){
+    icon.innerHTML = t==='light'
+      ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>'
+      : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  }
+}
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  applyTheme(cur==='dark'?'light':'dark');
+}
+applyTheme(localStorage.getItem('theme') || 'dark');
+
 /* ============ 페이지 전환 ============ */
 function showPage(id){
   ['loginPage','resetPage','shell'].forEach(x=>document.getElementById(x).classList.add('hidden'));
@@ -732,12 +799,13 @@ function logout(){
 async function initMain(){
   me = await api('GET','/auth/me');
   document.getElementById('uname').textContent = me.username;
-  document.getElementById('urole').textContent = ({superadmin:'최고 관리자',admin:'관리자',user:'일반 사용자'})[me.role]||me.role;
+  document.getElementById('urole').textContent = ROLE_LABELS[me.role]||me.role;
   document.getElementById('avatar').textContent = me.username[0].toUpperCase();
   const isAdmin = me.role==='admin'||me.role==='superadmin';
   document.getElementById('adminBtn').classList.toggle('hidden', !isAdmin);
   document.getElementById('adminTbBtn').classList.toggle('hidden', !isAdmin);
-  document.getElementById('statusSub').textContent = 'API 키 활성 · '+Object.keys(MODELS).length+'개 모델 사용 가능';
+  try { await loadModels(); } catch(e){ toast('모델 목록을 불러오지 못했습니다: '+e.message, true); }
+  document.getElementById('statusSub').textContent = '모델 '+Object.keys(MODELS).length+'개 사용 가능';
   updateModelUI();
   showPage('shell');
   updateResponsive();
@@ -813,7 +881,7 @@ function renderSidebar(){
   projects.filter(p=>!q||p.name.toLowerCase().includes(q)).forEach(p=>{
     const b=document.createElement('button');
     b.className='proj-item'+(viewingProject&&viewingProject.id===p.id?' active':'');
-    b.innerHTML=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 15px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    b.innerHTML=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FF7A4D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 15px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       <div style="flex:1; min-width:0;">
         <div class="conv-title">${esc(p.name)}</div>
         <div class="conv-sub">대화 ${p.conversation_count} · 파일 ${p.file_count}</div>
@@ -834,7 +902,7 @@ function renderSidebar(){
   }
   if(!filtered.length){
     const d=document.createElement('div');
-    d.style.cssText='padding:14px 8px; font:400 11.5px/1.6 "Noto Sans KR"; color:#94a3b8; text-align:center;';
+    d.style.cssText='padding:14px 8px; font:400 11.5px/1.6 var(--font-sans); color:var(--fg-3); text-align:center;';
     d.textContent = listMode==='archive' ? '보관된 대화가 없습니다' : (q?'검색 결과가 없습니다':'아직 대화가 없습니다');
     el.appendChild(d);
   }
@@ -885,31 +953,33 @@ function toggleModelMenu(e){
   e.stopPropagation();
   const menu=document.getElementById('modelMenu');
   if(!menu.classList.contains('hidden')){ menu.classList.add('hidden'); return; }
-  // 프로바이더별 그룹 렌더
-  const groups={};
-  Object.entries(MODELS).forEach(([k,m])=>{ (groups[m.provider]=groups[m.provider]||[]).push([k,m]); });
+  // 프로바이더별 그룹 렌더 (서버 라우팅 설정 순서 유지)
+  const groups={}, order=[];
+  Object.entries(MODELS).forEach(([k,m])=>{
+    if(!groups[m.provider]){ groups[m.provider]=[]; order.push(m.provider); }
+    groups[m.provider].push([k,m]);
+  });
   let html=`<div style="padding:8px 11px 9px;">
-    <div style="font:700 13px/1.2 'Noto Sans KR'; color:#1e293b;">상황에 맞는 모델 선택</div>
-    <div style="font:400 11px/1.4 'Noto Sans KR'; color:#94a3b8; margin-top:2px;">하나의 허브에서 모든 모델을 전환합니다.</div>
+    <div style="font:700 13px/1.2 var(--font-sans); color:var(--fg-1);">상황에 맞는 모델 선택</div>
+    <div style="font:400 11px/1.4 var(--font-sans); color:var(--fg-3); margin-top:2px;">하나의 허브에서 모든 모델을 전환합니다.</div>
   </div>`;
-  Object.entries(groups).forEach(([prov,items])=>{
-    const p=PROVIDERS[prov];
+  order.forEach(prov=>{
+    const items=groups[prov];
+    const color=PROVIDER_COLORS[prov]||'#6366f1';
+    const label=items[0][1].provider_label||prov;
     html+=`<div style="padding:6px 6px 4px;">
       <div style="display:flex; align-items:center; gap:7px; padding:4px 6px 7px;">
-        <span style="width:7px; height:7px; border-radius:2px; background:${p.color};"></span>
-        <span style="font:700 10.5px/1 'Inter'; letter-spacing:.05em; color:#64748b; text-transform:uppercase;">${p.label}</span>
+        <span style="width:7px; height:7px; border-radius:2px; background:${color};"></span>
+        <span style="font:700 10.5px/1 var(--font-sans); letter-spacing:.05em; color:var(--fg-2); text-transform:uppercase;">${esc(label)}</span>
       </div>`;
     items.forEach(([k,m])=>{
-      html+=`<button class="mm-item" data-model="${k}" style="${k===currentModel?'background:rgba(99,102,241,0.08);':''}">
-        <span style="width:9px; height:9px; flex:0 0 9px; border-radius:50%; background:${p.color};"></span>
+      html+=`<button class="mm-item" data-model="${esc(k)}" style="${k===currentModel?'background:rgba(255,122,77,0.08);':''}">
+        <span style="width:9px; height:9px; flex:0 0 9px; border-radius:50%; background:${color};"></span>
         <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:7px;">
-            <span style="font:600 13px/1.2 'Inter','Noto Sans KR'; color:#1e293b;">${esc(m.label)}</span>
-            ${m.tag?`<span class="chip" style="color:#4f46e5; background:rgba(99,102,241,0.12);">${esc(m.tag)}</span>`:''}
-          </div>
-          <div style="font:400 11px/1.4 'Noto Sans KR'; color:#94a3b8; margin-top:2px;">${esc(m.desc)}</div>
+          <span style="font:600 13px/1.2 var(--font-sans); color:var(--fg-1);">${esc(m.label)}</span>
+          <div style="font:400 11px/1.4 var(--font-sans); color:var(--fg-3); margin-top:2px;">${esc(m.desc||'')}</div>
         </div>
-        ${k===currentModel?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':''}
+        ${k===currentModel?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF7A4D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':''}
       </button>`;
     });
     html+='</div>';
@@ -944,14 +1014,14 @@ function setHeader(title, meta, hasConv){
 }
 
 function welcomeHTML(){
-  const projNote = activeProjectId ? (()=>{ const p=projects.find(x=>x.id===activeProjectId); return p?`<div style="margin-top:10px;"><span class="chip" style="background:rgba(99,102,241,0.12); color:#4f46e5; font-size:11px; padding:5px 10px;">📁 ${esc(p.name)} 프로젝트에서 시작</span></div>`:''; })() : '';
+  const projNote = activeProjectId ? (()=>{ const p=projects.find(x=>x.id===activeProjectId); return p?`<div style="margin-top:10px;"><span class="chip" style="background:rgba(255,122,77,0.12); color:var(--accent); font-size:11px; padding:5px 10px;">📁 ${esc(p.name)} 프로젝트에서 시작</span></div>`:''; })() : '';
   return `<div id="welcomeBox" style="display:flex; align-items:center; justify-content:center; height:100%; min-height:340px; text-align:center;" class="msg-fade">
     <div>
-      <div style="width:64px; height:64px; margin:0 auto 18px; border-radius:20px; background:linear-gradient(135deg,#6366f1,#22d3ee); display:flex; align-items:center; justify-content:center; box-shadow:0 18px 40px -14px rgba(99,102,241,0.6);">
+      <div style="width:64px; height:64px; margin:0 auto 18px; border-radius:20px; background:linear-gradient(120deg,#FF8A5B,#FF5BA0); display:flex; align-items:center; justify-content:center; box-shadow:0 18px 40px -14px rgba(255,122,77,0.6);">
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12 2.7 5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.7 12 2.7z"/></svg>
       </div>
-      <div style="font:700 20px/1.3 'Noto Sans KR'; color:#1e293b;">무엇을 도와드릴까요?</div>
-      <div style="font:400 13px/1.6 'Noto Sans KR'; color:#94a3b8; margin-top:6px;">아래에 메시지를 입력하거나, 파일을 끌어다 놓아 시작하세요</div>
+      <div style="font:700 20px/1.3 var(--font-sans); color:var(--fg-1);">무엇을 도와드릴까요?</div>
+      <div style="font:400 13px/1.6 var(--font-sans); color:var(--fg-3); margin-top:6px;">아래에 메시지를 입력하거나, 파일을 끌어다 놓아 시작하세요</div>
       ${projNote}
     </div>
   </div>`;
@@ -1003,7 +1073,7 @@ function addDayDivider(label){
   const d=document.createElement('div');
   d.style.cssText='display:flex; align-items:center; gap:12px; opacity:.7;';
   d.innerHTML=`<span style="flex:1; height:1px; background:rgba(100,116,139,0.2);"></span>
-    <span style="font:600 11px/1 'Noto Sans KR'; color:#94a3b8;">${esc(label)}</span>
+    <span style="font:600 11px/1 var(--font-sans); color:var(--fg-3);">${esc(label)}</span>
     <span style="flex:1; height:1px; background:rgba(100,116,139,0.2);"></span>`;
   area.appendChild(d);
 }
@@ -1012,12 +1082,12 @@ function attachChipsHTML(atts){
   if(!atts||!atts.length) return '';
   return `<div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">`+atts.map(a=>`
     <div class="attach-card" style="cursor:pointer;" onclick="apiDownload('/files/${a.id}/download','${esc(jsq(a.filename))}').catch(e=>toast(e.message,true))" title="다운로드">
-      <div style="width:30px; height:30px; flex:0 0 30px; border-radius:8px; background:rgba(99,102,241,0.12); display:flex; align-items:center; justify-content:center; color:#6366f1;">
+      <div style="width:30px; height:30px; flex:0 0 30px; border-radius:8px; background:rgba(255,122,77,0.12); display:flex; align-items:center; justify-content:center; color:var(--accent);">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       </div>
       <div style="min-width:0;">
-        <div style="font:600 12px/1.2 'Noto Sans KR'; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">${esc(a.filename)}</div>
-        <div style="font:400 10px/1.3 'Inter'; color:#94a3b8;">${fmtSize(a.size_bytes)}</div>
+        <div style="font:600 12px/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">${esc(a.filename)}</div>
+        <div style="font:400 10px/1.3 var(--font-sans); color:var(--fg-3);">${fmtSize(a.size_bytes)}</div>
       </div>
     </div>`).join('')+`</div>`;
 }
@@ -1037,25 +1107,31 @@ function addMsg(role, content, meta){
   } else if(role==='assistant'){
     const mk=(meta&&meta.model)||currentModel;
     const color=modelColor(mk);
-    const provLabel=(PROVIDERS[(MODELS[mk]||{}).provider]||{}).label||((meta&&meta.provider)||'AI');
+    const provLabel=(MODELS[mk]||{}).provider_label||((meta&&meta.provider)||'AI');
     const time=meta&&meta.created_at?fmtTime(meta.created_at):'';
+    const skills=(meta&&meta.used_skills)||[];
+    const skillChips=skills.length?`<div style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:7px;">
+      ${skills.map(s=>`<span class="chip" style="display:inline-flex; align-items:center; gap:5px; padding:4px 9px; font-size:10.5px; ${s.status==='success'?'background:rgba(16,185,129,0.1); color:#6ee7b7;':'background:rgba(239,68,68,0.1); color:#fca5a5;'}">
+        🔧 ${esc(s.title)}${s.status!=='success'?' (실패)':''}</span>`).join('')}
+    </div>`:'';
     d.innerHTML=`<div style="display:flex; gap:14px;">
       <div style="width:36px; height:36px; flex:0 0 36px; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; box-shadow:0 7px 16px -7px ${color};">
         <span style="width:12px; height:12px; border-radius:4px; background:rgba(255,255,255,0.94); transform:rotate(45deg);"></span>
       </div>
       <div style="flex:1; min-width:0;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;">
-          <span style="font:600 13px/1 'Inter','Noto Sans KR'; color:#1e293b;">${esc(modelLabel(mk))}</span>
-          <span class="chip" style="color:#64748b; background:rgba(100,116,139,0.1);">${esc(provLabel)}</span>
-          ${time?`<span style="font:400 10.5px/1 'Inter'; color:#cbd5e1;">${time}</span>`:''}
+          <span style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">${esc(modelLabel(mk))}</span>
+          <span class="chip" style="color:var(--fg-2); background:rgba(100,116,139,0.1);">${esc(provLabel)}</span>
+          ${time?`<span style="font:400 10.5px/1 var(--font-sans); color:var(--fg-3);">${time}</span>`:''}
         </div>
+        ${skillChips}
         <div class="card-ai"><div class="md">${md(content)}</div></div>
       </div>
     </div>`;
     enhanceCode(d);
   } else { // error
     d.innerHTML=`<div style="display:flex; justify-content:center;">
-      <div style="font:500 12.5px/1.6 'Noto Sans KR'; color:#b91c1c; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); padding:10px 16px; border-radius:13px; max-width:80%;">${esc(content)}</div>
+      <div style="font:500 12.5px/1.6 var(--font-sans); color:#fca5a5; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); padding:10px 16px; border-radius:13px; max-width:80%;">${esc(content)}</div>
     </div>`;
   }
   area.appendChild(d);
@@ -1106,7 +1182,7 @@ async function sendMsg(){
     });
     document.getElementById(tid)?.remove();
     convId=r.conversation_id;
-    addMsg('assistant', r.message.content, r.message);
+    addMsg('assistant', r.message.content, Object.assign({}, r.message, {used_skills:r.used_skills||[]}));
     setHeader(r.conversation_title, (activeProjectId?(projects.find(p=>p.id===activeProjectId)||{}).name+' · ':'')+'방금 응답함', true);
     await Promise.all([loadConvs(), loadUsage()]);
   } catch(e){
@@ -1167,7 +1243,7 @@ function renderPending(){
   pending.forEach((a,i)=>{
     const chip=document.createElement('span');
     chip.className='pending-chip';
-    chip.innerHTML=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    chip.innerHTML=`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FF7A4D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span>${esc(a.filename)} <span style="opacity:.65;">(${fmtSize(a.size_bytes)})</span></span>`;
     const x=document.createElement('button');
     x.className='pending-x';
@@ -1267,12 +1343,12 @@ function renderProjectView(p, files, pconvs){
   <div style="max-width:840px; margin:0 auto;" class="msg-fade">
     <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:18px;">
       <div style="display:flex; gap:14px; min-width:0;">
-        <div style="width:46px; height:46px; flex:0 0 46px; border-radius:14px; background:linear-gradient(135deg,#6366f1,#22d3ee); display:flex; align-items:center; justify-content:center; box-shadow:0 12px 26px -10px rgba(99,102,241,0.6);">
+        <div style="width:46px; height:46px; flex:0 0 46px; border-radius:14px; background:linear-gradient(120deg,#FF8A5B,#FF5BA0); display:flex; align-items:center; justify-content:center; box-shadow:0 12px 26px -10px rgba(255,122,77,0.6);">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         </div>
         <div style="min-width:0;">
-          <div style="font:700 19px/1.25 'Noto Sans KR'; color:#1e293b;">${esc(p.name)}</div>
-          <div style="font:400 12.5px/1.6 'Noto Sans KR'; color:#64748b; margin-top:2px;">${esc(p.description||'설명 없음')}</div>
+          <div style="font:700 19px/1.25 var(--font-sans); color:var(--fg-1);">${esc(p.name)}</div>
+          <div style="font:400 12.5px/1.6 var(--font-sans); color:var(--fg-2); margin-top:2px;">${esc(p.description||'설명 없음')}</div>
         </div>
       </div>
       <div style="display:flex; gap:7px; flex-shrink:0;">
@@ -1294,8 +1370,8 @@ function renderProjectView(p, files, pconvs){
       <!-- 지침 -->
       <div class="row-card" style="grid-column:1/-1; padding:16px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:9px;">
-          <div style="font:700 13px/1 'Noto Sans KR'; color:#1e293b;">프로젝트 지침</div>
-          <button id="saveInstrBtn" class="sm-btn" style="border-color:rgba(99,102,241,0.4); color:#4f46e5;" onclick="saveInstructions()">저장</button>
+          <div style="font:700 13px/1 var(--font-sans); color:var(--fg-1);">프로젝트 지침</div>
+          <button id="saveInstrBtn" class="sm-btn" style="border-color:rgba(255,122,77,0.4); color:var(--accent);" onclick="saveInstructions()">저장</button>
         </div>
         <textarea id="projInstr" class="field" rows="4" placeholder="이 프로젝트의 모든 대화에 적용될 지침을 입력하세요. 예) 답변은 항상 한국어 존댓말로, 사내 보고서 형식으로 작성해줘.">${esc(p.instructions||'')}</textarea>
       </div>
@@ -1303,36 +1379,36 @@ function renderProjectView(p, files, pconvs){
       <!-- 지식 파일 -->
       <div class="row-card" style="padding:16px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-          <div style="font:700 13px/1 'Noto Sans KR'; color:#1e293b;">지식 파일 <span style="color:#94a3b8; font-weight:400;">(${files.length})</span></div>
-          <button class="sm-btn" style="border-color:rgba(99,102,241,0.4); color:#4f46e5;" onclick="document.getElementById('projFileInput').click()">+ 업로드</button>
+          <div style="font:700 13px/1 var(--font-sans); color:var(--fg-1);">지식 파일 <span style="color:var(--fg-3); font-weight:400;">(${files.length})</span></div>
+          <button class="sm-btn" style="border-color:rgba(255,122,77,0.4); color:var(--accent);" onclick="document.getElementById('projFileInput').click()">+ 업로드</button>
         </div>
         <div id="projFiles" style="display:flex; flex-direction:column; gap:6px;">
           ${files.length?files.map(f=>`
-            <div style="display:flex; align-items:center; gap:9px; padding:8px 10px; background:rgba(255,255,255,0.55); border:1px solid rgba(255,255,255,0.8); border-radius:10px;">
+            <div style="display:flex; align-items:center; gap:9px; padding:8px 10px; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:10px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${f.has_text?'#10b981':'#94a3b8'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               <div style="flex:1; min-width:0;">
-                <div style="font:600 11.5px/1.3 'Noto Sans KR'; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(f.filename)}</div>
-                <div style="font:400 9.5px/1.3 'Inter'; color:#94a3b8;">${fmtSize(f.size_bytes)}${f.has_text?' · 컨텍스트 포함됨':' · 텍스트 추출 불가'}</div>
+                <div style="font:600 11.5px/1.3 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(f.filename)}</div>
+                <div style="font:400 9.5px/1.3 var(--font-sans); color:var(--fg-3);">${fmtSize(f.size_bytes)}${f.has_text?' · 컨텍스트 포함됨':' · 텍스트 추출 불가'}</div>
               </div>
               <button class="mini-act danger" onclick="deleteProjectFile(${f.id})" title="삭제">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
               </button>
-            </div>`).join(''):'<div style="font:400 11.5px/1.6 \'Noto Sans KR\'; color:#94a3b8; text-align:center; padding:12px 0;">텍스트/PDF 파일을 올리면<br>모든 대화에서 참고합니다</div>'}
+            </div>`).join(''):'<div style="font:400 11.5px/1.6 var(--font-sans); color:var(--fg-3); text-align:center; padding:12px 0;">텍스트/PDF 파일을 올리면<br>모든 대화에서 참고합니다</div>'}
         </div>
       </div>
 
       <!-- 프로젝트 대화 -->
       <div class="row-card" style="padding:16px;">
-        <div style="font:700 13px/1 'Noto Sans KR'; color:#1e293b; margin-bottom:10px;">프로젝트 대화 <span style="color:#94a3b8; font-weight:400;">(${pconvs.length})</span></div>
+        <div style="font:700 13px/1 var(--font-sans); color:var(--fg-1); margin-bottom:10px;">프로젝트 대화 <span style="color:var(--fg-3); font-weight:400;">(${pconvs.length})</span></div>
         <div style="display:flex; flex-direction:column; gap:4px;">
           ${pconvs.length?pconvs.map(c=>`
             <button class="conv-item" onclick="loadConv(${c.id})" style="margin:0;">
-              <span class="conv-dot" style="background:#6366f1;"></span>
+              <span class="conv-dot" style="background:#FF7A4D;"></span>
               <div style="flex:1; min-width:0;">
                 <div class="conv-title">${esc(c.title)}</div>
                 <div class="conv-sub">${fmtDate(c.updated_at)}</div>
               </div>
-            </button>`).join(''):'<div style="font:400 11.5px/1.6 \'Noto Sans KR\'; color:#94a3b8; text-align:center; padding:12px 0;">아직 대화가 없습니다</div>'}
+            </button>`).join(''):'<div style="font:400 11.5px/1.6 var(--font-sans); color:var(--fg-3); text-align:center; padding:12px 0;">아직 대화가 없습니다</div>'}
         </div>
       </div>
     </div>
@@ -1406,7 +1482,7 @@ function openPrompt(title, fields){
     box.innerHTML='';
     fields.forEach((f,i)=>{
       const label=document.createElement('div');
-      label.style.cssText='font:600 11px/1 "Noto Sans KR"; color:#64748b;';
+      label.style.cssText='font:600 11px/1 var(--font-sans); color:var(--fg-2);';
       label.textContent=f.label;
       const input=document.createElement('input');
       input.className='field'; input.value=f.value||''; input.dataset.key=f.key;
@@ -1440,10 +1516,23 @@ function openAdmin(){
 function closeAdmin(){ document.getElementById('adminModal').classList.add('hidden'); }
 function switchTab(t){
   adminTab=t;
-  ['users','keys','convs','logs'].forEach(x=>{
+  ['users','keys','routes','integ','convs','logs'].forEach(x=>{
     document.getElementById('tab'+x[0].toUpperCase()+x.slice(1)).classList.toggle('on', x===t);
   });
-  ({users:loadUsersTab, keys:loadKeysTab, convs:loadConvsTab, logs:loadLogsTab})[t]();
+  ({users:loadUsersTab, keys:loadKeysTab, routes:loadRoutesTab, integ:loadIntegTab,
+    convs:loadConvsTab, logs:loadLogsTab})[t]();
+}
+
+let settingsMeta=null; // {providers:[{key,label,extra_fields}], roles:[{key,label,level}]}
+async function getSettingsMeta(){
+  if(!settingsMeta) settingsMeta=await api('GET','/settings/meta');
+  return settingsMeta;
+}
+function roleOptionsHTML(selected, maxLevelExclusive){
+  const roles=(settingsMeta&&settingsMeta.roles)||ROLE_ORDER.map(k=>({key:k,label:ROLE_LABELS[k],level:ROLE_ORDER.indexOf(k)*10}));
+  return roles
+    .filter(r=>maxLevelExclusive==null || r.level<maxLevelExclusive)
+    .map(r=>`<option value="${esc(r.key)}" ${r.key===selected?'selected':''}>${esc(r.label)}</option>`).join('');
 }
 
 /* ----- 사용자 탭 ----- */
@@ -1451,46 +1540,50 @@ async function loadUsersTab(){
   const body=document.getElementById('adminBody');
   body.innerHTML='<div style="text-align:center; padding:30px;"><span class="spinner" style="display:inline-block;"></span></div>';
   let users;
-  try { users=await api('GET','/users'); } catch(e){ body.innerHTML=`<div style="color:#b91c1c;">${esc(e.message)}</div>`; return; }
-  const roleLabel={superadmin:'최고 관리자',admin:'관리자',user:'일반 사용자'};
-  const roleCls={superadmin:'background:rgba(147,51,234,0.12); color:#7e22ce;',admin:'background:rgba(99,102,241,0.12); color:#4f46e5;',user:'background:rgba(100,116,139,0.12); color:#64748b;'};
+  try { users=await api('GET','/users'); await getSettingsMeta(); } catch(e){ body.innerHTML=`<div style="color:#fca5a5;">${esc(e.message)}</div>`; return; }
+  const roleLabel=ROLE_LABELS;
+  const roleCls={
+    superadmin:'background:rgba(147,51,234,0.12); color:#d8b4fe;',
+    admin:'background:rgba(255,122,77,0.12); color:var(--accent);',
+    manager:'background:rgba(6,182,212,0.12); color:#67e8f9;',
+    user:'background:rgba(100,116,139,0.12); color:var(--fg-2);'};
+  const myLevel=((settingsMeta&&settingsMeta.roles)||[]).find(r=>r.key===me.role)?.level ?? 30;
   body.innerHTML=`
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-      <div style="font:600 13px/1 'Noto Sans KR'; color:#334155;">사용자 목록 (${users.length})</div>
+      <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">사용자 목록 (${users.length})</div>
       <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="showCreateUser()">+ 사용자 추가</button>
     </div>
     <div id="userFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
-      <div style="font:600 12.5px/1 'Noto Sans KR'; color:#334155; margin-bottom:10px;">새 사용자 생성</div>
+      <div style="font:600 12.5px/1 var(--font-sans); color:var(--fg-1); margin-bottom:10px;">새 사용자 생성</div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
         <input id="fUser" class="field" placeholder="사용자명">
         <input id="fPw" class="field" type="password" placeholder="초기 비밀번호 (8자 이상)">
         <input id="fEmail" class="field" type="email" placeholder="이메일 (선택)">
         <select id="fRole" class="field">
-          <option value="user">일반 사용자</option>
-          ${me.role==='superadmin'?'<option value="admin">관리자</option>':''}
+          ${roleOptionsHTML('user', myLevel)}
         </select>
       </div>
       <div style="display:flex; gap:7px;">
         <button class="primary-btn" style="padding:8px 16px; font-size:12px; border-radius:9px;" onclick="createUser()">생성</button>
-        <button class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:#64748b;" onclick="document.getElementById('userFormBox').classList.add('hidden')">취소</button>
+        <button class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:var(--fg-2);" onclick="document.getElementById('userFormBox').classList.add('hidden')">취소</button>
       </div>
     </div>
     <div style="display:flex; flex-direction:column; gap:7px;">
       ${users.map(u=>`
         <div class="row-card" style="display:flex; align-items:center; gap:11px;">
-          <div style="width:32px; height:32px; flex:0 0 32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#22d3ee); display:flex; align-items:center; justify-content:center; font:700 12px/1 'Noto Sans KR'; color:#fff;">${esc(u.username[0].toUpperCase())}</div>
+          <div style="width:32px; height:32px; flex:0 0 32px; border-radius:10px; background:linear-gradient(120deg,#FF8A5B,#FF5BA0); display:flex; align-items:center; justify-content:center; font:700 12px/1 var(--font-sans); color:#fff;">${esc(u.username[0].toUpperCase())}</div>
           <div style="flex:1; min-width:0;">
             <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
-              <span style="font:600 13px/1.2 'Noto Sans KR'; color:#1e293b;">${esc(u.username)}</span>
+              <span style="font:600 13px/1.2 var(--font-sans); color:var(--fg-1);">${esc(u.username)}</span>
               <span class="chip" style="${roleCls[u.role]||roleCls.user}">${roleLabel[u.role]||esc(u.role)}</span>
-              ${u.force_password_reset?'<span class="chip" style="background:rgba(234,179,8,0.14); color:#a16207;">PW 변경 필요</span>':''}
-              ${!u.is_active?'<span class="chip" style="background:rgba(239,68,68,0.12); color:#b91c1c;">비활성</span>':''}
+              ${u.force_password_reset?'<span class="chip" style="background:rgba(234,179,8,0.14); color:#fcd34d;">PW 변경 필요</span>':''}
+              ${!u.is_active?'<span class="chip" style="background:rgba(239,68,68,0.12); color:#fca5a5;">비활성</span>':''}
             </div>
-            <div style="font:400 10.5px/1.5 'Inter','Noto Sans KR'; color:#94a3b8;">${esc(u.email||'이메일 없음')} · 생성 ${fmtDate(u.created_at)}</div>
+            <div style="font:400 10.5px/1.5 var(--font-sans); color:var(--fg-3);">${esc(u.email||'이메일 없음')} · 생성 ${fmtDate(u.created_at)}</div>
           </div>
           ${u.role!=='superadmin'?`
-            <button class="sm-btn" style="${u.is_active?'border-color:rgba(239,68,68,0.4); color:#dc2626;':'border-color:rgba(16,185,129,0.45); color:#047857;'}" onclick="toggleUser(${u.id})">${u.is_active?'비활성화':'활성화'}</button>
-            ${me.role==='superadmin'?`<button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#dc2626;" onclick="deleteUser(${u.id},'${esc(jsq(u.username))}')">삭제</button>`:''}
+            <button class="sm-btn" style="${u.is_active?'border-color:rgba(239,68,68,0.4); color:#fca5a5;':'border-color:rgba(16,185,129,0.45); color:#6ee7b7;'}" onclick="toggleUser(${u.id})">${u.is_active?'비활성화':'활성화'}</button>
+            ${me.role==='superadmin'?`<button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#fca5a5;" onclick="deleteUser(${u.id},'${esc(jsq(u.username))}')">삭제</button>`:''}
           `:''}
         </div>`).join('')}
     </div>`;
@@ -1524,58 +1617,308 @@ async function loadKeysTab(){
   const body=document.getElementById('adminBody');
   body.innerHTML='<div style="text-align:center; padding:30px;"><span class="spinner" style="display:inline-block;"></span></div>';
   let keys;
-  try { keys=await api('GET','/keys'); } catch(e){ body.innerHTML=`<div style="color:#b91c1c;">${esc(e.message)}</div>`; return; }
-  const pLabel={anthropic:'Anthropic',gabia:'가비아 AI Hub',openai:'OpenAI',gemini:'Google Gemini',other:'기타'};
+  try { keys=await api('GET','/keys'); await getSettingsMeta(); } catch(e){ body.innerHTML=`<div style="color:#fca5a5;">${esc(e.message)}</div>`; return; }
+  const provs=settingsMeta.providers;
+  const pLabel={}; provs.forEach(p=>pLabel[p.key]=p.label); pLabel.other='기타';
   body.innerHTML=`
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-      <div style="font:600 13px/1 'Noto Sans KR'; color:#334155;">API 키 목록 (${keys.length})</div>
+      <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">API 키 목록 (${keys.length})</div>
       <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="document.getElementById('keyFormBox').classList.remove('hidden')">+ API 키 추가</button>
     </div>
     <div id="keyFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
-      <div style="font:600 12.5px/1 'Noto Sans KR'; color:#334155; margin-bottom:10px;">새 API 키 등록</div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
-        <input id="kName" class="field" placeholder="키 이름 (예: Anthropic 운영키)">
-        <select id="kProvider" class="field">
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="gabia">가비아 AI Hub (GPT/기타)</option>
-          <option value="openai">OpenAI</option>
-          <option value="gemini">Google Gemini</option>
+      <div style="font:600 12.5px/1 var(--font-sans); color:var(--fg-1); margin-bottom:10px;">새 API 키 등록</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+        <input id="kName" class="field" placeholder="키 이름 (예: Azure 운영키)">
+        <select id="kProvider" class="field" onchange="renderKeyExtraFields()">
+          ${provs.map(p=>`<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('')}
           <option value="other">기타</option>
         </select>
-        <input id="kValue" class="field" type="password" placeholder="API 키 값" style="grid-column:1/-1;">
+        <input id="kValue" class="field" type="password" placeholder="API 키 값 (Bedrock은 AWS Access Key ID)" style="grid-column:1/-1;">
       </div>
-      <div style="font:400 10.5px/1.5 'Noto Sans KR'; color:#94a3b8; margin-bottom:10px;">· Claude 모델은 anthropic 키, GPT/DeepSeek 등은 gabia 키가 사용됩니다. 같은 프로바이더 키가 여러 개면 최근 등록된 활성 키를 사용합니다.</div>
+      <div id="kExtraFields" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
+      <div style="font:400 10.5px/1.5 var(--font-sans); color:var(--fg-3); margin:8px 0 10px;">
+        · 모델별 호출처는 <b>모델 라우팅</b> 탭에서 지정합니다. 같은 프로바이더 키가 여러 개면 최근 등록된 활성 키를 사용합니다.<br>
+        · Azure: endpoint(https://리소스.openai.azure.com)와 api_version, Bedrock: aws_secret_key와 region이 필요합니다.
+      </div>
       <div style="display:flex; gap:7px;">
         <button class="primary-btn" style="padding:8px 16px; font-size:12px; border-radius:9px;" onclick="createKey()">등록</button>
-        <button class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:#64748b;" onclick="document.getElementById('keyFormBox').classList.add('hidden')">취소</button>
+        <button class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:var(--fg-2);" onclick="document.getElementById('keyFormBox').classList.add('hidden')">취소</button>
       </div>
     </div>
     <div style="display:flex; flex-direction:column; gap:7px;">
       ${keys.length?keys.map(k=>`
         <div class="row-card" style="display:flex; align-items:center; gap:11px;">
-          <span class="chip" style="background:rgba(99,102,241,0.1); color:#4f46e5; font-size:10.5px; padding:5px 9px;">${pLabel[k.provider]||esc(k.provider)}</span>
+          <span class="chip" style="background:rgba(255,122,77,0.1); color:var(--accent); font-size:10.5px; padding:5px 9px;">${pLabel[k.provider]||esc(k.provider)}</span>
           <div style="flex:1; min-width:0;">
-            <div style="font:600 13px/1.2 'Noto Sans KR'; color:#1e293b;">${esc(k.name)}</div>
-            <div style="font:400 11px/1.5 'JetBrains Mono',monospace; color:#94a3b8;">${esc(k.key_value)}</div>
+            <div style="font:600 13px/1.2 var(--font-sans); color:var(--fg-1);">${esc(k.name)}</div>
+            <div style="font:400 11px/1.5 'JetBrains Mono',monospace; color:var(--fg-3);">${esc(k.key_value)}${(k.extra_keys&&k.extra_keys.length)?' · 추가설정: '+esc(k.extra_keys.join(', ')):''}</div>
           </div>
-          <span style="font:600 11px/1 'Noto Sans KR'; color:${k.is_active?'#047857':'#94a3b8'};">${k.is_active?'활성':'비활성'}</span>
-          <button class="sm-btn" style="border-color:rgba(234,179,8,0.5); color:#a16207;" onclick="toggleKey(${k.id})">${k.is_active?'비활성화':'활성화'}</button>
-          <button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#dc2626;" onclick="delKey(${k.id})">삭제</button>
-        </div>`).join(''):'<div style="text-align:center; color:#94a3b8; font:400 12px/1.6 \'Noto Sans KR\'; padding:20px;">등록된 키가 없습니다. .env의 키가 기본으로 사용됩니다.</div>'}
+          <span style="font:600 11px/1 var(--font-sans); color:${k.is_active?'#047857':'#94a3b8'};">${k.is_active?'활성':'비활성'}</span>
+          <button class="sm-btn" style="border-color:rgba(234,179,8,0.5); color:#fcd34d;" onclick="toggleKey(${k.id})">${k.is_active?'비활성화':'활성화'}</button>
+          <button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#fca5a5;" onclick="delKey(${k.id})">삭제</button>
+        </div>`).join(''):'<div style="text-align:center; color:var(--fg-3); font:400 12px/1.6 var(--font-sans); padding:20px;">등록된 키가 없습니다. .env의 키가 기본으로 사용됩니다.</div>'}
     </div>`;
+}
+function renderKeyExtraFields(){
+  const p=document.getElementById('kProvider').value;
+  const def=((settingsMeta&&settingsMeta.providers)||[]).find(x=>x.key===p);
+  const box=document.getElementById('kExtraFields');
+  box.innerHTML=(def&&def.extra_fields||[]).map(f=>
+    `<input class="field kExtra" data-key="${esc(f)}" placeholder="${esc(f)}">`).join('');
 }
 async function createKey(){
   const n=document.getElementById('kName').value.trim();
   const p=document.getElementById('kProvider').value;
   const v=document.getElementById('kValue').value.trim();
   if(!n||!v){ toast('키 이름과 값을 입력해주세요', true); return; }
-  try{ await api('POST','/keys',{name:n,provider:p,key_value:v}); toast('API 키가 등록되었습니다'); loadKeysTab(); }
-  catch(e){ toast(e.message,true); }
+  const extra={};
+  document.querySelectorAll('.kExtra').forEach(i=>{ if(i.value.trim()) extra[i.dataset.key]=i.value.trim(); });
+  try{
+    await api('POST','/keys',{name:n,provider:p,key_value:v,extra:Object.keys(extra).length?extra:null});
+    toast('API 키가 등록되었습니다'); loadKeysTab();
+  } catch(e){ toast(e.message,true); }
 }
 async function toggleKey(id){ try{ await api('PATCH',`/keys/${id}/toggle`); loadKeysTab(); }catch(e){ toast(e.message,true); } }
 async function delKey(id){
   if(!confirm('이 API 키를 삭제하시겠습니까?')) return;
   try{ await api('DELETE',`/keys/${id}`); loadKeysTab(); }catch(e){ toast(e.message,true); }
+}
+
+/* ----- 모델 라우팅 탭 (admin+) ----- */
+async function loadRoutesTab(){
+  const body=document.getElementById('adminBody');
+  body.innerHTML='<div style="text-align:center; padding:30px;"><span class="spinner" style="display:inline-block;"></span></div>';
+  let routes;
+  try { [routes]=await Promise.all([api('GET','/settings/model-routes'), getSettingsMeta()]); }
+  catch(e){ body.innerHTML=`<div style="color:#fca5a5;">${esc(e.message)}</div>`; return; }
+  const provOpts=p=>settingsMeta.providers.map(x=>`<option value="${esc(x.key)}" ${x.key===p?'selected':''}>${esc(x.label)}</option>`).join('');
+  body.innerHTML=`
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">모델 라우팅 (${routes.length})</div>
+      <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="document.getElementById('routeFormBox').classList.toggle('hidden')">+ 모델 추가</button>
+    </div>
+    <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-3); margin-bottom:12px;">각 모델 키가 <b>어느 프로바이더의 어떤 모델</b>을 호출할지 지정합니다. 최소 역할을 올리면 하위 권한 직원에게는 모델이 보이지 않습니다.</div>
+    <div id="routeFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+        <input id="rKey" class="field" placeholder="모델 키 (예: gpt4-azure)">
+        <input id="rLabel" class="field" placeholder="표시 이름 (예: GPT-4o Azure)">
+        <select id="rProvider" class="field">${provOpts('anthropic')}</select>
+        <input id="rModelId" class="field" placeholder="프로바이더 모델 ID / Azure deployment">
+        <input id="rDesc" class="field" placeholder="설명 (선택)">
+        <select id="rRole" class="field">${roleOptionsHTML('user', null)}</select>
+      </div>
+      <button class="primary-btn" style="padding:8px 16px; font-size:12px; border-radius:9px;" onclick="createRoute()">추가</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:7px;">
+      ${routes.map(r=>`
+        <div class="row-card" data-rid="${r.id}" data-enabled="${r.enabled?'1':'0'}" style="display:grid; grid-template-columns:110px 1fr 130px 1fr 110px auto; gap:7px; align-items:center; opacity:${r.enabled?'1':'0.55'};">
+          <div style="min-width:0;">
+            <div style="font:600 12px/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.key)}</div>
+            <div style="font:400 9.5px/1.4 var(--font-sans); color:var(--fg-3);">#${r.id}</div>
+          </div>
+          <input class="field rt-label" style="padding:7px 10px; font-size:12px;" value="${esc(r.label)}">
+          <select class="field rt-provider" style="padding:7px 8px; font-size:11.5px;">${provOpts(r.provider)}</select>
+          <input class="field rt-model" style="padding:7px 10px; font-size:11.5px; font-family:'JetBrains Mono',monospace;" value="${esc(r.provider_model_id)}">
+          <select class="field rt-role" style="padding:7px 8px; font-size:11.5px;">${roleOptionsHTML(r.min_role, null)}</select>
+          <div style="display:flex; gap:5px;">
+            <button class="sm-btn" style="border-color:rgba(255,122,77,0.4); color:var(--accent);" onclick="saveRoute(${r.id},${r.sort},'${esc(jsq(r.description||''))}')">저장</button>
+            <button class="sm-btn" style="border-color:rgba(234,179,8,0.5); color:#fcd34d;" onclick="toggleRoute(${r.id},${r.enabled?'false':'true'},${r.sort})">${r.enabled?'끄기':'켜기'}</button>
+            <button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#fca5a5;" onclick="deleteRoute(${r.id})">삭제</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+function _routeRowPayload(id, sort, desc){
+  const row=document.querySelector(`[data-rid="${id}"]`);
+  return {
+    key:'-', // PATCH에서 key는 서버가 변경하지 않음
+    label:row.querySelector('.rt-label').value,
+    provider:row.querySelector('.rt-provider').value,
+    provider_model_id:row.querySelector('.rt-model').value,
+    min_role:row.querySelector('.rt-role').value,
+    description:desc||'', enabled:row.dataset.enabled==='1', sort:sort,
+  };
+}
+async function saveRoute(id, sort, desc){
+  try{ await api('PATCH',`/settings/model-routes/${id}`,_routeRowPayload(id,sort,desc)); toast('저장되었습니다'); loadModels(); loadRoutesTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function toggleRoute(id, enable, sort){
+  const p=_routeRowPayload(id,sort,''); p.enabled=(enable==='true'||enable===true);
+  try{ await api('PATCH',`/settings/model-routes/${id}`,p); loadModels(); loadRoutesTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function createRoute(){
+  const payload={
+    key:document.getElementById('rKey').value.trim(),
+    label:document.getElementById('rLabel').value.trim(),
+    provider:document.getElementById('rProvider').value,
+    provider_model_id:document.getElementById('rModelId').value.trim(),
+    description:document.getElementById('rDesc').value.trim(),
+    min_role:document.getElementById('rRole').value, enabled:true, sort:100,
+  };
+  if(!payload.key||!payload.provider_model_id){ toast('모델 키와 모델 ID를 입력해주세요', true); return; }
+  try{ await api('POST','/settings/model-routes',payload); toast('모델이 추가되었습니다'); loadModels(); loadRoutesTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function deleteRoute(id){
+  if(!confirm('이 모델 라우팅을 삭제하시겠습니까?')) return;
+  try{ await api('DELETE',`/settings/model-routes/${id}`); loadModels(); loadRoutesTab(); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* ----- 연동·스킬 탭 (admin+) ----- */
+async function loadIntegTab(){
+  const body=document.getElementById('adminBody');
+  body.innerHTML='<div style="text-align:center; padding:30px;"><span class="spinner" style="display:inline-block;"></span></div>';
+  let integs, skills;
+  try { [integs, skills]=await Promise.all([api('GET','/settings/integrations'), api('GET','/settings/skills')]); await getSettingsMeta(); }
+  catch(e){ body.innerHTML=`<div style="color:#fca5a5;">${esc(e.message)}</div>`; return; }
+  body.innerHTML=`
+    <!-- 연동 -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">외부 연동 (${integs.length})</div>
+      <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="document.getElementById('integFormBox').classList.toggle('hidden')">+ 연동 추가</button>
+    </div>
+    <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-3); margin-bottom:12px;">하이웍스·구글 등 사내 시스템의 API 주소와 인증 키를 등록하면, 아래 스킬이 이 연동을 통해 호출됩니다.</div>
+    <div id="integFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+        <input id="iName" class="field" placeholder="이름 (예: 하이웍스)">
+        <select id="iKind" class="field">
+          <option value="hiworks">하이웍스</option>
+          <option value="google">구글 (Google API)</option>
+          <option value="slack">슬랙</option>
+          <option value="custom" selected>기타/사내 API</option>
+        </select>
+        <input id="iBase" class="field" placeholder="Base URL (예: https://api.hiworks.com)" style="grid-column:1/-1;">
+        <select id="iAuthType" class="field">
+          <option value="bearer">Bearer 토큰 (Authorization)</option>
+          <option value="header">커스텀 헤더 키</option>
+          <option value="query">쿼리 파라미터 키</option>
+          <option value="none">인증 없음</option>
+        </select>
+        <input id="iAuthKey" class="field" placeholder="헤더/파라미터 이름 (bearer면 비움)">
+        <input id="iCred" class="field" type="password" placeholder="API 키 / 토큰" style="grid-column:1/-1;">
+      </div>
+      <button class="primary-btn" style="padding:8px 16px; font-size:12px; border-radius:9px;" onclick="createInteg()">추가</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:7px; margin-bottom:22px;">
+      ${integs.length?integs.map(i=>`
+        <div class="row-card" style="display:flex; align-items:center; gap:11px; opacity:${i.is_active?'1':'0.55'};">
+          <span class="chip" style="background:rgba(255,122,77,0.1); color:var(--accent); font-size:10.5px; padding:5px 9px;">${esc(i.kind)}</span>
+          <div style="flex:1; min-width:0;">
+            <div style="font:600 13px/1.2 var(--font-sans); color:var(--fg-1);">${esc(i.name)} <span style="font:400 10px var(--font-sans); color:var(--fg-3);">· 스킬 ${i.skill_count}개</span></div>
+            <div style="font:400 10.5px/1.5 'JetBrains Mono',monospace; color:var(--fg-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(i.base_url)} · ${esc(i.auth_type)}${i.has_credential?' · 키 등록됨':' · 키 없음'}</div>
+          </div>
+          <button class="sm-btn" style="border-color:rgba(234,179,8,0.5); color:#fcd34d;" onclick="toggleInteg(${i.id},${i.is_active?'false':'true'})">${i.is_active?'끄기':'켜기'}</button>
+          <button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#fca5a5;" onclick="deleteInteg(${i.id})">삭제</button>
+        </div>`).join(''):'<div style="text-align:center; color:var(--fg-3); font:400 12px/1.6 var(--font-sans); padding:14px;">등록된 연동이 없습니다</div>'}
+    </div>
+
+    <!-- 스킬 -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">스킬 (${skills.length})</div>
+      <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="document.getElementById('skillFormBox').classList.toggle('hidden')" ${integs.length?'':'disabled title="먼저 연동을 추가하세요"'}>+ 스킬 추가</button>
+    </div>
+    <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-3); margin-bottom:12px;">AI가 대화 중 자동으로 호출하는 도구입니다. <b>최소 역할</b>로 권한별 사용을 제한합니다 (예: 담당자 이상만 결재 조회 가능).</div>
+    <div id="skillFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+        <input id="sName" class="field" placeholder="스킬 이름 (영문, 예: hiworks_approval)">
+        <input id="sTitle" class="field" placeholder="표시 이름 (예: 하이웍스 결재 조회)">
+        <textarea id="sDesc" class="field" rows="2" placeholder="AI에게 주는 설명 — 언제 이 스킬을 써야 하는지 (예: 사용자가 결재/전자결재 문서 목록이나 상태를 물으면 호출)" style="grid-column:1/-1;"></textarea>
+        <select id="sInteg" class="field">${integs.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('')}</select>
+        <select id="sMethod" class="field"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
+        <input id="sPath" class="field" placeholder="경로 (예: /v1/approvals/{doc_id})" style="grid-column:1/-1;">
+        <input id="sQuery" class="field" placeholder='쿼리 JSON (예: {"status":"{status}","limit":"10"})'>
+        <textarea id="sParams" class="field" rows="2" placeholder='파라미터 JSON (예: [{"name":"status","type":"string","description":"문서 상태 (progress/complete)","required":false}])'></textarea>
+        <select id="sRole" class="field">${roleOptionsHTML('manager', null)}</select>
+        <input id="sTimeout" class="field" type="number" value="20" min="3" max="60" placeholder="타임아웃(초)">
+      </div>
+      <button class="primary-btn" style="padding:8px 16px; font-size:12px; border-radius:9px;" onclick="createSkill()">추가</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:7px;">
+      ${skills.length?skills.map(s=>`
+        <div class="row-card" data-sid="${s.id}" style="opacity:${s.is_active?'1':'0.55'};">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                <span style="font:600 13px/1.2 var(--font-sans); color:var(--fg-1);">🔧 ${esc(s.title)}</span>
+                <span class="chip" style="background:rgba(100,116,139,0.1); color:var(--fg-2); font-family:'JetBrains Mono',monospace;">${esc(s.name)}</span>
+                <span class="chip" style="background:rgba(255,122,77,0.1); color:var(--accent);">${esc(s.integration_name)}</span>
+              </div>
+              <div style="font:400 10.5px/1.5 'JetBrains Mono',monospace; color:var(--fg-3); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(s.method)} ${esc(s.path)}</div>
+              <div style="font:400 11px/1.5 var(--font-sans); color:var(--fg-2); margin-top:2px;">${esc(s.description.slice(0,120))}${s.description.length>120?'…':''}</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font:400 10px var(--font-sans); color:var(--fg-3);">최소 역할</span>
+                <select class="field sk-role" style="padding:5px 8px; font-size:11px; width:auto;" onchange="setSkillRole(${s.id},this.value)">${roleOptionsHTML(s.min_role, null)}</select>
+              </div>
+              <div style="display:flex; gap:5px;">
+                <button class="sm-btn" style="border-color:rgba(234,179,8,0.5); color:#fcd34d;" onclick="toggleSkill(${s.id},${s.is_active?'false':'true'})">${s.is_active?'끄기':'켜기'}</button>
+                <button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#fca5a5;" onclick="deleteSkill(${s.id})">삭제</button>
+              </div>
+            </div>
+          </div>
+        </div>`).join(''):'<div style="text-align:center; color:var(--fg-3); font:400 12px/1.6 var(--font-sans); padding:14px;">등록된 스킬이 없습니다</div>'}
+    </div>`;
+}
+async function createInteg(){
+  const payload={
+    name:document.getElementById('iName').value.trim(),
+    kind:document.getElementById('iKind').value,
+    base_url:document.getElementById('iBase').value.trim(),
+    auth_type:document.getElementById('iAuthType').value,
+    auth_key:document.getElementById('iAuthKey').value.trim()||'Authorization',
+    credential:document.getElementById('iCred').value.trim(),
+  };
+  if(!payload.name||!payload.base_url){ toast('이름과 Base URL을 입력해주세요', true); return; }
+  try{ await api('POST','/settings/integrations',payload); toast('연동이 추가되었습니다'); loadIntegTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function toggleInteg(id, active){
+  try{ await api('PATCH',`/settings/integrations/${id}`,{is_active:active==='true'||active===true}); loadIntegTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function deleteInteg(id){
+  if(!confirm('이 연동과 소속 스킬을 모두 삭제하시겠습니까?')) return;
+  try{ await api('DELETE',`/settings/integrations/${id}`); loadIntegTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function createSkill(){
+  let query=null, params=[];
+  const qRaw=document.getElementById('sQuery').value.trim();
+  const pRaw=document.getElementById('sParams').value.trim();
+  try{ if(qRaw) query=JSON.parse(qRaw); }catch(e){ toast('쿼리 JSON 형식이 잘못되었습니다', true); return; }
+  try{ if(pRaw) params=JSON.parse(pRaw); }catch(e){ toast('파라미터 JSON 형식이 잘못되었습니다', true); return; }
+  const payload={
+    name:document.getElementById('sName').value.trim(),
+    title:document.getElementById('sTitle').value.trim(),
+    description:document.getElementById('sDesc').value.trim(),
+    integration_id:parseInt(document.getElementById('sInteg').value),
+    method:document.getElementById('sMethod').value,
+    path:document.getElementById('sPath').value.trim(),
+    query_template:query, params:params,
+    min_role:document.getElementById('sRole').value,
+    timeout_s:parseInt(document.getElementById('sTimeout').value)||20,
+    is_active:true,
+  };
+  if(!payload.name||!payload.title||!payload.description||!payload.path){ toast('이름/표시 이름/설명/경로를 입력해주세요', true); return; }
+  try{ await api('POST','/settings/skills',payload); toast('스킬이 추가되었습니다'); loadIntegTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function setSkillRole(id, role){
+  try{ await api('PATCH',`/settings/skills/${id}`,{min_role:role}); toast('권한이 변경되었습니다'); }
+  catch(e){ toast(e.message,true); loadIntegTab(); }
+}
+async function toggleSkill(id, active){
+  try{ await api('PATCH',`/settings/skills/${id}`,{is_active:active==='true'||active===true}); loadIntegTab(); }
+  catch(e){ toast(e.message,true); }
+}
+async function deleteSkill(id){
+  if(!confirm('이 스킬을 삭제하시겠습니까?')) return;
+  try{ await api('DELETE',`/settings/skills/${id}`); loadIntegTab(); }
+  catch(e){ toast(e.message,true); }
 }
 
 /* ----- 대화 조회 탭 (superadmin) ----- */
@@ -1593,7 +1936,7 @@ async function loadConvsTab(){
       <input id="acSearch" class="field" style="flex:1; min-width:160px; padding:9px 12px;" placeholder="제목 검색" onkeydown="if(event.key==='Enter')fetchAdminConvs()">
       <button class="primary-btn" style="padding:9px 16px; font-size:12px; border-radius:10px;" onclick="fetchAdminConvs()">조회</button>
     </div>
-    <div style="font:400 10.5px/1.5 'Noto Sans KR'; color:#94a3b8; margin-bottom:10px;">⚠ 감사 목적의 열람 기능입니다. 직원 대화 열람은 필요한 경우에만 사용하세요.</div>
+    <div style="font:400 10.5px/1.5 var(--font-sans); color:var(--fg-3); margin-bottom:10px;">⚠ 감사 목적의 열람 기능입니다. 직원 대화 열람은 필요한 경우에만 사용하세요.</div>
     <div id="acList"></div>`;
   fetchAdminConvs();
 }
@@ -1604,17 +1947,17 @@ async function fetchAdminConvs(){
   const q=document.getElementById('acSearch').value.trim();
   try {
     const list=await api('GET',`/admin/conversations?limit=100${uid?'&user_id='+uid:''}${q?'&q='+encodeURIComponent(q):''}`);
-    if(!list.length){ el.innerHTML='<div style="text-align:center; color:#94a3b8; font:400 12px/1.6 \'Noto Sans KR\'; padding:20px;">대화가 없습니다</div>'; return; }
+    if(!list.length){ el.innerHTML='<div style="text-align:center; color:var(--fg-3); font:400 12px/1.6 var(--font-sans); padding:20px;">대화가 없습니다</div>'; return; }
     el.innerHTML='<div style="display:flex; flex-direction:column; gap:6px;">'+list.map(c=>`
       <button class="row-card" style="display:flex; align-items:center; gap:11px; cursor:pointer; text-align:left; width:100%;" onclick="viewAdminConv(${c.id},'${esc(jsq(c.username))}')">
-        <div style="width:30px; height:30px; flex:0 0 30px; border-radius:9px; background:linear-gradient(135deg,#475569,#94a3b8); display:flex; align-items:center; justify-content:center; font:700 11px/1 'Noto Sans KR'; color:#fff;">${esc(c.username[0].toUpperCase())}</div>
+        <div style="width:30px; height:30px; flex:0 0 30px; border-radius:9px; background:linear-gradient(135deg,#475569,#94a3b8); display:flex; align-items:center; justify-content:center; font:700 11px/1 var(--font-sans); color:#fff;">${esc(c.username[0].toUpperCase())}</div>
         <div style="flex:1; min-width:0;">
-          <div style="font:600 12.5px/1.3 'Noto Sans KR'; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(c.title)}</div>
-          <div style="font:400 10.5px/1.4 'Inter','Noto Sans KR'; color:#94a3b8;">${esc(c.username)} · 메시지 ${c.message_count}개 · ${fmtDate(c.updated_at)}${c.is_archived?' · 보관됨':''}</div>
+          <div style="font:600 12.5px/1.3 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(c.title)}</div>
+          <div style="font:400 10.5px/1.4 var(--font-sans); color:var(--fg-3);">${esc(c.username)} · 메시지 ${c.message_count}개 · ${fmtDate(c.updated_at)}${c.is_archived?' · 보관됨':''}</div>
         </div>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>`).join('')+'</div>';
-  } catch(e){ el.innerHTML=`<div style="color:#b91c1c; font:400 12px/1.5 'Noto Sans KR';">${esc(e.message)}</div>`; }
+  } catch(e){ el.innerHTML=`<div style="color:#fca5a5; font:400 12px/1.5 var(--font-sans);">${esc(e.message)}</div>`; }
 }
 async function viewAdminConv(id, username){
   const body=document.getElementById('adminBody');
@@ -1622,26 +1965,26 @@ async function viewAdminConv(id, username){
   try {
     const msgs=await api('GET',`/admin/conversations/${id}/messages`);
     body.innerHTML=`
-      <button class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:#64748b; margin-bottom:14px;" onclick="loadConvsTab()">← 목록으로</button>
-      <div style="font:600 12px/1 'Noto Sans KR'; color:#334155; margin-bottom:14px;">${esc(username)}님의 대화 · 메시지 ${msgs.length}개 <span style="color:#94a3b8; font-weight:400;">(읽기 전용)</span></div>
+      <button class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:var(--fg-2); margin-bottom:14px;" onclick="loadConvsTab()">← 목록으로</button>
+      <div style="font:600 12px/1 var(--font-sans); color:var(--fg-1); margin-bottom:14px;">${esc(username)}님의 대화 · 메시지 ${msgs.length}개 <span style="color:var(--fg-3); font-weight:400;">(읽기 전용)</span></div>
       <div style="display:flex; flex-direction:column; gap:14px;">
         ${msgs.map(m=>{
-          const atts=(m.attachments||[]).map(a=>`<div style="font:400 10.5px/1.5 'Noto Sans KR'; color:#6366f1;">📎 ${esc(a.filename)} (${fmtSize(a.size_bytes)})</div>`).join('');
+          const atts=(m.attachments||[]).map(a=>`<div style="font:400 10.5px/1.5 var(--font-sans); color:var(--accent);">📎 ${esc(a.filename)} (${fmtSize(a.size_bytes)})</div>`).join('');
           if(m.role==='user'){
             return `<div style="display:flex; justify-content:flex-end;"><div style="max-width:78%;">
               ${atts}
               <div class="bubble-user" style="font-size:13px;">${esc(m.content)}</div>
-              <div style="text-align:right; font:400 10px/1.6 'Inter'; color:#94a3b8;">${fmtDate(m.created_at)}</div>
+              <div style="text-align:right; font:400 10px/1.6 var(--font-sans); color:var(--fg-3);">${fmtDate(m.created_at)}</div>
             </div></div>`;
           }
           return `<div style="max-width:88%;">
-            <div style="font:600 11px/1 'Inter','Noto Sans KR'; color:#64748b; margin-bottom:5px;">${esc(modelLabel(m.model))} · ${fmtDate(m.created_at)}</div>
+            <div style="font:600 11px/1 var(--font-sans); color:var(--fg-2); margin-bottom:5px;">${esc(modelLabel(m.model))} · ${fmtDate(m.created_at)}</div>
             <div class="card-ai"><div class="md" style="font-size:13px;">${md(m.content)}</div></div>
           </div>`;
         }).join('')}
       </div>`;
     document.querySelectorAll('#adminBody .card-ai').forEach(enhanceCode);
-  } catch(e){ body.innerHTML=`<div style="color:#b91c1c;">${esc(e.message)}</div>`; }
+  } catch(e){ body.innerHTML=`<div style="color:#fca5a5;">${esc(e.message)}</div>`; }
 }
 
 /* ----- 사용 로그 탭 (superadmin) ----- */
@@ -1653,19 +1996,19 @@ async function loadLogsTab(){
   let summary=[], users=[];
   try { [summary, users]=await Promise.all([api('GET','/admin/logs/summary?days=30'), api('GET','/users')]); } catch(e){}
   body.innerHTML=`
-    <div style="font:600 13px/1 'Noto Sans KR'; color:#334155; margin-bottom:10px;">최근 30일 사용자별 요약</div>
+    <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1); margin-bottom:10px;">최근 30일 사용자별 요약</div>
     <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; margin-bottom:20px;">
       ${summary.length?summary.map(s=>`
         <div class="row-card" style="padding:11px 13px;">
-          <div style="font:700 13px/1.2 'Noto Sans KR'; color:#1e293b;">${esc(s.username)}</div>
-          <div style="font:400 10.5px/1.6 'Inter','Noto Sans KR'; color:#64748b; margin-top:3px;">
+          <div style="font:700 13px/1.2 var(--font-sans); color:var(--fg-1);">${esc(s.username)}</div>
+          <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-2); margin-top:3px;">
             대화 ${s.chat_count}회 · 토큰 ${((s.input_tokens+s.output_tokens)/1000).toFixed(1)}K<br>
             마지막 사용 ${s.last_used?fmtDate(s.last_used):'-'}
           </div>
-        </div>`).join(''):'<div style="color:#94a3b8; font:400 12px/1.5 \'Noto Sans KR\';">아직 기록이 없습니다</div>'}
+        </div>`).join(''):'<div style="color:var(--fg-3); font:400 12px/1.5 var(--font-sans);">아직 기록이 없습니다</div>'}
     </div>
     <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
-      <div style="font:600 13px/1 'Noto Sans KR'; color:#334155; margin-right:auto;">상세 로그</div>
+      <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1); margin-right:auto;">상세 로그</div>
       <select id="lgUser" class="field" style="width:auto; padding:8px 11px; font-size:12px;" onchange="fetchLogs(true)">
         <option value="">전체 직원</option>
         ${users.map(u=>`<option value="${u.id}">${esc(u.username)}</option>`).join('')}
@@ -1690,7 +2033,7 @@ async function loadLogsTab(){
       </table>
     </div>
     <div style="text-align:center; margin-top:12px;">
-      <button id="moreLogsBtn" class="sm-btn" style="border-color:rgba(99,102,241,0.4); color:#4f46e5;" onclick="fetchLogs(false)">더 보기</button>
+      <button id="moreLogsBtn" class="sm-btn" style="border-color:rgba(255,122,77,0.4); color:var(--accent);" onclick="fetchLogs(false)">더 보기</button>
     </div>`;
   fetchLogs(true);
 }
@@ -1715,15 +2058,20 @@ async function fetchLogs(reset){
         <td>${l.duration_ms!=null?(l.duration_ms/1000).toFixed(1)+'s':'-'}</td>
         <td style="font-family:'JetBrains Mono',monospace; font-size:11px;">${esc(l.client_ip||'-')}</td>
         <td>${l.status==='success'
-            ?'<span class="chip" style="background:rgba(16,185,129,0.12); color:#047857;">성공</span>'
-            :`<span class="chip" style="background:rgba(239,68,68,0.12); color:#b91c1c;" title="${esc(l.detail||'')}">실패</span>`}</td>
+            ?'<span class="chip" style="background:rgba(16,185,129,0.12); color:#6ee7b7;">성공</span>'
+            :`<span class="chip" style="background:rgba(239,68,68,0.12); color:#fca5a5;" title="${esc(l.detail||'')}">실패</span>`}</td>
       </tr>`).join(''));
     document.getElementById('moreLogsBtn').style.display = logs.length<100 ? 'none' : '';
-    if(reset && !logs.length) rows.innerHTML='<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:18px;">로그가 없습니다</td></tr>';
+    if(reset && !logs.length) rows.innerHTML='<tr><td colspan="8" style="text-align:center; color:var(--fg-3); padding:18px;">로그가 없습니다</td></tr>';
   } catch(e){ toast(e.message,true); }
 }
 
 /* ============ 부팅 ============ */
+// PWA 서비스워커 등록 (홈 화면 설치/오프라인 셸)
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+}
+
 (async()=>{
   if(token){
     try {

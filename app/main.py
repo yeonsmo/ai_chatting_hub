@@ -10,7 +10,7 @@ from app.database import AsyncSessionLocal, init_db
 from app.file_utils import ensure_upload_dir
 from app.middleware import IPWhitelistMiddleware
 from app.models import User, UserRole
-from app.routers import auth, chat, users, keys, files, projects, admin
+from app.routers import auth, chat, users, keys, files, projects, admin, settings_admin
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -55,6 +55,7 @@ app.include_router(keys.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(settings_admin.router, prefix="/api")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -62,6 +63,17 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# PWA: 서비스워커는 루트 스코프에서 서빙해야 전체 앱을 제어할 수 있다
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse("app/static/sw.js", media_type="application/javascript")
+
+
+@app.get("/manifest.webmanifest")
+async def manifest():
+    return FileResponse("app/static/manifest.webmanifest", media_type="application/manifest+json")
 
 
 @app.get("/{full_path:path}")

@@ -36,12 +36,21 @@ async def get_current_user(
 
 
 async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in [UserRole.admin, UserRole.superadmin]:
+    from app.roles import has_min_role
+    if not has_min_role(current_user, UserRole.admin):
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
     return current_user
 
 
+async def get_manager_user(current_user: User = Depends(get_current_user)) -> User:
+    from app.roles import has_min_role
+    if not has_min_role(current_user, UserRole.manager):
+        raise HTTPException(status_code=403, detail="담당자 이상의 권한이 필요합니다")
+    return current_user
+
+
 async def get_superadmin_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != UserRole.superadmin:
+    from app.roles import has_min_role
+    if not has_min_role(current_user, UserRole.superadmin):
         raise HTTPException(status_code=403, detail="최고 관리자 권한이 필요합니다")
     return current_user
