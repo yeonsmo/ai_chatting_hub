@@ -15,8 +15,8 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="/static/vendor/marked.min.js"></script>
+<script src="/static/vendor/purify.min.js"></script>
 <style>
   /* ============================================================================
      HP ENGINEERING — Liquid Glass 디자인 토큰 (딥네이비 + 코랄→핑크 글로우)
@@ -645,6 +645,10 @@ function toast(msg, isErr){
   setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),320); }, 3200);
 }
 function md(text){
+  // 마크다운/소독 라이브러리가 로드되지 않았어도 메시지는 안전하게 표시(줄바꿈 보존)
+  if(typeof marked==='undefined' || typeof DOMPurify==='undefined'){
+    return '<p style="white-space:pre-wrap;margin:0;">'+esc(text||'')+'</p>';
+  }
   const html = marked.parse(text||'', {breaks:true});
   return DOMPurify.sanitize(html, {ADD_ATTR:['target']});
 }

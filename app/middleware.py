@@ -3,6 +3,46 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 
+class MaxBodySizeMiddleware:
+    """요청 본문 크기 상한(순수 ASGI). Content-Length 사전 거부 + 스트리밍 바이트
+    카운팅 백스톱으로, 멀티파트가 디스크 스풀에 통째로 기록되기 전에 과대 요청을 차단."""
+
+    def __init__(self, app, max_body_bytes: int):
+        self.app = app
+        self.max_body_bytes = max_body_bytes
+
+    async def _reject(self, send):
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"text/plain; charset=utf-8")]})
+        await send({"type": "http.response.body", "body": "요청 본문이 너무 큽니다".encode()})
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        for name, value in scope.get("headers") or []:
+            if name == b"content-length":
+                try:
+                    if int(value) > self.max_body_bytes:
+                        return await self._reject(send)
+                except ValueError:
+                    pass
+                break
+
+        total = 0
+        async def rcv():
+            nonlocal total
+            message = await receive()
+            if message.get("type") == "http.request":
+                total += len(message.get("body", b""))
+                if total > self.max_body_bytes:
+                    # 상한 초과 시 클라이언트 연결 종료로 파서를 중단(디스크 스풀 폭증 방지)
+                    return {"type": "http.disconnect"}
+            return message
+
+        await self.app(scope, rcv, send)
+
+
 def _parse_networks(csv: str):
     networks = []
     for ip_str in csv.split(","):

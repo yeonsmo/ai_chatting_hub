@@ -28,10 +28,13 @@ def _validate_base_url(base_url: str) -> str:
     if not base.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="base_url은 http(s)://로 시작해야 합니다")
     host = urlparse(base).hostname or ""
+    if not host:
+        raise HTTPException(status_code=400, detail="base_url에 호스트가 없습니다 (예: https://api.example.com)")
     try:
         _validate_public_host(host)  # 사설/loopback/링크로컬이면 예외
     except ValueError as e:
-        # 해석 실패는 허용(내부 split-DNS 등) — 실제 호출 시 런타임이 재검증한다.
+        # 해석 실패(내부 split-DNS 등)는 허용 — 실제 호출 시 런타임이 재검증한다.
+        # 단, 사설/내부 대역으로 '해석되는' 경우는 등록 거부.
         if "내부" in str(e) or "사설" in str(e):
             raise HTTPException(status_code=400, detail="사설/내부 대역 주소는 연동 대상으로 등록할 수 없습니다")
     return base[:500]

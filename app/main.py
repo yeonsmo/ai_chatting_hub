@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import AsyncSessionLocal, init_db
 from app.file_utils import ensure_upload_dir
-from app.middleware import IPWhitelistMiddleware
+from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware
 from app.models import User, UserRole
 from app.routers import auth, chat, users, keys, files, projects, admin, settings_admin
 
@@ -46,6 +46,13 @@ app.add_middleware(
     IPWhitelistMiddleware,
     allowed_ips=settings.allowed_ips,
     trusted_proxies=settings.trusted_proxies,
+)
+
+# 전역 요청 본문 상한(업로드 최대치 + 멀티파트 오버헤드 여유). 마지막에 추가해 최외곽에서
+# 먼저 동작하도록 한다 → 과대 요청을 인증/파싱 전에 차단.
+app.add_middleware(
+    MaxBodySizeMiddleware,
+    max_body_bytes=settings.max_upload_mb * 1024 * 1024 + 1024 * 1024,
 )
 
 app.include_router(auth.router, prefix="/api")
