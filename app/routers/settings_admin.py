@@ -98,6 +98,7 @@ async def create_model_route(
     route = ModelRoute(
         key=key[:80], label=request.label.strip()[:120] or key,
         provider=request.provider, provider_model_id=request.provider_model_id.strip()[:200],
+        kind="image" if request.kind == "image" else "chat",
         description=request.description.strip()[:200],
         min_role=request.min_role, enabled=request.enabled, sort=request.sort,
     )
@@ -125,6 +126,7 @@ async def update_model_route(
     route.label = request.label.strip()[:120] or route.label
     route.provider = request.provider
     route.provider_model_id = request.provider_model_id.strip()[:200] or route.provider_model_id
+    route.kind = "image" if request.kind == "image" else "chat"
     route.description = request.description.strip()[:200]
     route.min_role = request.min_role
     route.enabled = request.enabled

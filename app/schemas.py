@@ -48,6 +48,8 @@ class AttachmentResponse(BaseModel):
     content_type: str
     size_bytes: int
     has_text: bool = False
+    kind: str = "upload"        # upload | generated
+    origin: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -160,6 +162,7 @@ class ModelRouteUpsert(BaseModel):
     label: str
     provider: str
     provider_model_id: str
+    kind: str = "chat"          # chat | image
     description: str = ""
     min_role: str = "user"
     enabled: bool = True

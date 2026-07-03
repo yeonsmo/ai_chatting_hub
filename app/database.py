@@ -26,6 +26,10 @@ MIGRATION_STATEMENTS = [
     'ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS extra TEXT',
     # 보안: 비밀번호 변경 시 기존 토큰 무효화용 버전
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0',
+    # v4: 문서/이미지 생성
+    "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'upload'",
+    'ALTER TABLE attachments ADD COLUMN IF NOT EXISTS origin VARCHAR(80)',
+    "ALTER TABLE model_routes ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'chat'",
 ]
 
 

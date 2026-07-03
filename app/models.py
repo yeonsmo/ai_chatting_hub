@@ -93,6 +93,8 @@ class Attachment(Base):
     size_bytes = Column(BigInteger, default=0)
     stored_name = Column(String(80), nullable=False)  # 디스크 상 파일명(uuid)
     text_content = Column(Text, nullable=True)        # 추출된 텍스트(모델 컨텍스트용)
+    kind = Column(String(20), default="upload", nullable=False)  # upload | generated
+    origin = Column(String(80), nullable=True)        # 생성 출처(도구명/모델키)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     message = relationship("Message", back_populates="attachments", foreign_keys=[message_id])
@@ -122,6 +124,7 @@ class ModelRoute(Base):
     label = Column(String(120), nullable=False)                    # 표시 이름
     provider = Column(String(50), nullable=False)                  # anthropic/gabia/openai/azure/gemini/bedrock
     provider_model_id = Column(String(200), nullable=False)        # 실제 모델 ID(azure는 deployment 이름)
+    kind = Column(String(20), default="chat", nullable=False)      # chat | image
     description = Column(String(200), default="")
     min_role = Column(String(30), default="user", nullable=False)  # 이 모델을 쓸 수 있는 최소 역할
     enabled = Column(Boolean, default=True, nullable=False)
