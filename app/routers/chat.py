@@ -237,7 +237,12 @@ async def send_message(
         await db.flush()
 
     if conversation.project_id and not project:
-        presult = await db.execute(select(Project).where(Project.id == conversation.project_id))
+        presult = await db.execute(
+            select(Project).where(
+                Project.id == conversation.project_id,
+                Project.user_id == current_user.id,  # 소유자 확인(방어적 — 타인 프로젝트 지침 주입 차단)
+            )
+        )
         project = presult.scalar_one_or_none()
 
     # ---- 사용자 메시지 저장 (AI 실패와 무관하게 보존되도록 먼저 커밋) ----
@@ -410,7 +415,7 @@ async def get_conversations(
     )
     if project_id is not None:
         query = query.where(Conversation.project_id == project_id)
-    result = await db.execute(query)
+    result = await db.execute(query.limit(1000))  # 자기 데이터 폭증에 대한 상한
     return result.scalars().all()
 
 
@@ -439,6 +444,7 @@ async def get_messages(
         select(Message)
         .where(Message.conversation_id == conversation_id)
         .order_by(Message.created_at.asc(), Message.id.asc())
+        .limit(5000)  # 단일 대화 표시 상한(자기 데이터 폭증 방지)
     )
     messages = result.scalars().all()
     attach_map = await _load_attachments_map(db, [m.id for m in messages])
@@ -495,6 +501,7 @@ async def export_conversation(
         select(Message)
         .where(Message.conversation_id == conversation_id)
         .order_by(Message.created_at.asc(), Message.id.asc())
+        .limit(5000)  # 내보내기 상한(대용량 메모리 폭증 방지)
     )
     messages = result.scalars().all()
     attach_map = await _load_attachments_map(db, [m.id for m in messages])

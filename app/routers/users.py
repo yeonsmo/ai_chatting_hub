@@ -48,7 +48,7 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
 ):
     if current_user.role == UserRole.superadmin:
-        result = await db.execute(select(User))
+        result = await db.execute(select(User).limit(2000))
     else:
         result = await db.execute(select(User).where(User.created_by == current_user.id))
     return result.scalars().all()

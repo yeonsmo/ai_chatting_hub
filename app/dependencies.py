@@ -9,8 +9,8 @@ from app.models import User, UserRole
 
 security = HTTPBearer()
 
-# 비밀번호 강제 변경 중인 계정이 예외적으로 접근 가능한 경로(접미사 매칭)
-_RESET_ALLOWED_SUFFIXES = ("/auth/change-password", "/auth/me", "/auth/logout")
+# 비밀번호 강제 변경 중인 계정이 예외적으로 접근 가능한 경로(정확 매칭)
+_RESET_ALLOWED_PATHS = {"/api/auth/change-password", "/api/auth/me", "/api/auth/logout"}
 
 
 async def get_current_user(
@@ -41,7 +41,7 @@ async def get_current_user(
         raise exc
 
     # 비밀번호 강제 변경이 필요한 계정은 변경 관련 경로 외 접근 차단(서버측 강제)
-    if user.force_password_reset and not request.url.path.rstrip("/").endswith(_RESET_ALLOWED_SUFFIXES):
+    if user.force_password_reset and request.url.path.rstrip("/") not in _RESET_ALLOWED_PATHS:
         raise HTTPException(status_code=403, detail="비밀번호를 먼저 변경해야 합니다")
     return user
 

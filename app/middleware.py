@@ -2,6 +2,32 @@ import ipaddress
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+# 콘텐츠 보안 정책(CSP). 인라인 스크립트/스타일/onclick을 많이 쓰므로 script/style에
+# 'unsafe-inline'이 불가피하지만, connect-src/img-src를 'self'로 제한해 토큰 탈취 시
+# 외부로의 유출 경로(fetch/XHR/이미지 비콘)를 차단한다(방어층). 폰트는 CDN 허용.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """모든 응답에 보안 헤더 부여(CSP, 클릭재킹/스니핑 방지 등)."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        return response
+
 
 class MaxBodySizeMiddleware:
     """요청 본문 크기 상한(순수 ASGI). Content-Length 사전 거부 + 스트리밍 바이트

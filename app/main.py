@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import AsyncSessionLocal, init_db
 from app.file_utils import ensure_upload_dir
-from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware
+from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware, SecurityHeadersMiddleware
 from app.models import User, UserRole
 from app.routers import auth, chat, users, keys, files, projects, admin, settings_admin
 
@@ -54,6 +54,9 @@ app.add_middleware(
     MaxBodySizeMiddleware,
     max_body_bytes=settings.max_upload_mb * 1024 * 1024 + 1024 * 1024,
 )
+
+# 모든 응답에 보안 헤더(CSP 등) 부여
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
