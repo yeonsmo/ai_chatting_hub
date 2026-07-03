@@ -40,6 +40,15 @@ def ensure_upload_dir() -> str:
     return path
 
 
+def write_bytes(data: bytes, ext: str) -> str:
+    """생성 파일 바이트를 저장하고 stored_name 반환."""
+    ext = "".join(ch for ch in (ext or "") if ch.isalnum())[:12]
+    name = uuid.uuid4().hex + (f".{ext}" if ext else "")
+    with open(stored_path(name), "wb") as f:
+        f.write(data)
+    return name
+
+
 def safe_ext(filename: str) -> str:
     ext = os.path.splitext(filename)[1].lower().lstrip(".")
     return "".join(ch for ch in ext if ch.isalnum())[:12]

@@ -11,6 +11,7 @@ ModelRoute.provider 값에 따라 실제 호출처를 결정한다.
 새 프로바이더 추가: PROVIDERS에 등록하고 run_chat의 분기에 구현.
 스킬(tool) 지원: anthropic/bedrock은 tool-use, OpenAI 계열은 function-calling.
 """
+import base64
 import json
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
@@ -42,6 +43,9 @@ PROVIDERS = {
 
 ANTHROPIC_FAMILY = {"anthropic", "bedrock"}
 OPENAI_FAMILY = {"gabia", "openai", "azure"}
+# 이미지 생성을 지원하는 프로바이더(대화 모델과 별개의 이미지 엔드포인트 사용)
+IMAGE_PROVIDERS = {"gabia", "openai", "azure", "gemini"}
+MAX_IMAGE_OUT_BYTES = 8 * 1024 * 1024
 
 
 @dataclass
@@ -328,3 +332,93 @@ async def run_chat(db: AsyncSession, provider: str, model_id: str,
         return await _run_gemini(model_id, key, system_prompt, messages)
 
     raise HTTPException(status_code=500, detail=f"알 수 없는 프로바이더: {provider}")
+
+
+# ---------------- 이미지 생성 ----------------
+
+@dataclass
+class GeneratedImage:
+    data: bytes
+    content_type: str = "image/png"
+
+
+def _image_base_url(provider: str, extra: dict) -> str:
+    if provider == "gabia":
+        return f"{settings.ai_hub_base_url}/v1"
+    if provider == "azure":
+        endpoint = (extra.get("endpoint") or "").rstrip("/")
+        if not endpoint:
+            raise HTTPException(status_code=500, detail="Azure 키에 endpoint 설정이 필요합니다.")
+        api_version = extra.get("api_version") or "2024-10-21"
+        # Azure 이미지: deployment 경로. model_id를 deployment 이름으로 사용.
+        return f"{endpoint}/openai/deployments/{{model}}/images/generations?api-version={api_version}"
+    return "https://api.openai.com/v1"  # openai 공식
+
+
+async def _run_openai_image(provider: str, model_id: str, key: str, extra: dict,
+                            prompt: str, size: str) -> list[GeneratedImage]:
+    payload = {"prompt": prompt[:4000], "n": 1, "size": size, "response_format": "b64_json"}
+    if provider == "azure":
+        url = _image_base_url(provider, extra).format(model=model_id)
+        headers = {"api-key": key}
+    else:
+        base = _image_base_url(provider, extra)
+        url = f"{base}/images/generations"
+        headers = {"Authorization": f"Bearer {key}"}
+        payload["model"] = model_id
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        r = await client.post(url, headers=headers, json=payload)
+        if r.status_code >= 400:
+            # 일부 모델은 response_format 미지원 → url 방식으로 재시도
+            if "response_format" in r.text:
+                payload.pop("response_format", None)
+                r = await client.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        data = r.json()
+    out = []
+    for item in (data.get("data") or []):
+        if item.get("b64_json"):
+            out.append(GeneratedImage(base64.standard_b64decode(item["b64_json"])))
+        elif item.get("url"):
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                img = await client.get(item["url"])
+                img.raise_for_status()
+                out.append(GeneratedImage(img.content, img.headers.get("content-type", "image/png")))
+    if not out:
+        raise HTTPException(status_code=502, detail="이미지 응답을 받지 못했습니다.")
+    return out
+
+
+async def _run_gemini_image(model_id: str, key: str, prompt: str) -> list[GeneratedImage]:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
+    payload = {"contents": [{"role": "user", "parts": [{"text": prompt[:4000]}]}],
+               "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}}
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        r = await client.post(url, headers={"x-goog-api-key": key}, json=payload)
+        r.raise_for_status()
+        data = r.json()
+    out = []
+    for cand in (data.get("candidates") or []):
+        for part in ((cand.get("content") or {}).get("parts") or []):
+            inline = part.get("inlineData") or part.get("inline_data")
+            if inline and inline.get("data"):
+                out.append(GeneratedImage(base64.standard_b64decode(inline["data"]),
+                                          inline.get("mimeType") or inline.get("mime_type") or "image/png"))
+    if not out:
+        raise HTTPException(status_code=502, detail="이미지 응답을 받지 못했습니다.")
+    return out
+
+
+async def run_image(db: AsyncSession, provider: str, model_id: str, prompt: str,
+                    size: str = "1024x1024") -> list[GeneratedImage]:
+    if provider not in IMAGE_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"{provider}는 이미지 생성을 지원하지 않습니다.")
+    key, extra = await resolve_credentials(db, provider)
+    if provider == "gemini":
+        images = await _run_gemini_image(model_id, key, prompt)
+    else:
+        images = await _run_openai_image(provider, model_id, key, extra, prompt, size)
+    for img in images:
+        if len(img.data) > MAX_IMAGE_OUT_BYTES:
+            raise HTTPException(status_code=502, detail="생성 이미지가 너무 큽니다.")
+    return images

@@ -8,14 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.file_utils import stored_path
+from app.file_utils import stored_path, write_bytes
 from app.models import (User, Conversation, Message, Attachment, Project, UsageLog,
                         ModelRoute, Skill, Integration)
-from app.providers import (run_chat, friendly_api_error, ToolContext,
+from app.providers import (run_chat, run_image, friendly_api_error, ToolContext,
                            ANTHROPIC_FAMILY, PROVIDERS)
 from app.roles import role_level, has_min_role
 from app.routers.files import to_response as attachment_response
 from app.skills_runtime import execute_skill, anthropic_tool_def, openai_tool_def
+from app import gen_tools
 from app.schemas import MessageCreate, ChatResponse, ConversationResponse, ConversationUpdate, MessageResponse
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -266,8 +267,69 @@ async def send_message(
 
     requested = request.model or "sonnet"
     route = await get_model_route(db, requested, current_user)
-    is_anthropic_family = route.provider in ANTHROPIC_FAMILY
+    started = time.monotonic()
+    ip = client_ip(http_request)
 
+    def make_log(**kw) -> UsageLog:
+        return UsageLog(
+            user_id=current_user.id, username=current_user.username, action="chat",
+            conversation_id=conversation.id, model=requested, provider=route.provider,
+            client_ip=ip, duration_ms=int((time.monotonic() - started) * 1000), **kw,
+        )
+
+    async def finalize(assistant_content: str, *, in_tok=None, out_tok=None,
+                       gen_atts=None, used_skills=None):
+        """assistant 메시지 저장 + 생성물 첨부 연결 + 응답 구성(공통)."""
+        assistant_msg = Message(
+            conversation_id=conversation.id, role="assistant", content=assistant_content,
+            model=requested, provider=route.provider,
+        )
+        db.add(assistant_msg)
+        await db.flush()
+        for att in (gen_atts or []):
+            att.message_id = assistant_msg.id
+        db.add(make_log(input_tokens=in_tok, output_tokens=out_tok))
+        conversation.updated_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(assistant_msg)
+        return ChatResponse(
+            conversation_id=conversation.id,
+            conversation_title=conversation.title,
+            used_skills=used_skills or [],
+            message=MessageResponse(
+                id=assistant_msg.id, role=assistant_msg.role, content=assistant_msg.content,
+                model=assistant_msg.model, provider=assistant_msg.provider,
+                created_at=assistant_msg.created_at,
+                attachments=[attachment_response(a) for a in (gen_atts or [])],
+            ),
+        )
+
+    # ==================== 이미지 생성 경로 ====================
+    if route.kind == "image":
+        if not content:
+            raise HTTPException(status_code=400, detail="이미지로 만들 내용을 입력해주세요")
+        try:
+            images = await run_image(db, route.provider, route.provider_model_id, content)
+        except HTTPException as e:
+            db.add(make_log(status="error", detail=str(e.detail)[:500])); await db.commit(); raise
+        except Exception as e:
+            detail = friendly_api_error(e)
+            db.add(make_log(status="error", detail=detail[:500])); await db.commit()
+            raise HTTPException(status_code=502, detail=detail)
+        gen_atts = []
+        base = gen_tools.safe_filename(content[:40], "생성이미지", "png")
+        for i, img in enumerate(images):
+            ext = (img.content_type.split("/")[-1] or "png").split(";")[0][:5]
+            stored = write_bytes(img.data, ext)
+            fn = base if len(images) == 1 else base.replace(".png", f"_{i+1}.png")
+            att = Attachment(user_id=current_user.id, filename=fn, content_type=img.content_type,
+                             size_bytes=len(img.data), stored_name=stored, kind="generated", origin=requested)
+            db.add(att); gen_atts.append(att)
+        return await finalize("요청하신 이미지를 생성했어요.", gen_atts=gen_atts,
+                              used_skills=[{"name": requested, "title": route.label, "status": "success"}])
+
+    # ==================== 대화(+도구) 경로 ====================
+    is_anthropic_family = route.provider in ANTHROPIC_FAMILY
     llm_messages = []
     for m in history:
         matts = attach_map.get(m.id, [])
@@ -280,60 +342,61 @@ async def send_message(
 
     system_prompt = await build_system_prompt(db, project)
 
-    # ---- 스킬(도구) 컨텍스트: 역할별 허용 스킬만 노출 ----
-    started = time.monotonic()
+    # 역할별 허용 스킬 + 내장 생성 도구(문서/엑셀)
     skills = await get_allowed_skills(db, current_user)
     skill_map = {s.name: s for s in skills}
-    ip = client_ip(http_request)
+    gen_atts: list[Attachment] = []
 
-    async def skill_executor(name: str, params: dict) -> str:
+    async def tool_executor(name: str, params: dict) -> str:
+        # 내장 생성 도구
+        if name in gen_tools.TOOLS:
+            t0 = time.monotonic()
+            log = UsageLog(user_id=current_user.id, username=current_user.username,
+                           action="generate", conversation_id=conversation.id,
+                           model=name, provider="builtin", client_ip=ip)
+            try:
+                data, ct, ext, fn = gen_tools.run_tool(name, params)
+                stored = write_bytes(data, ext)
+                att = Attachment(user_id=current_user.id, filename=fn, content_type=ct,
+                                 size_bytes=len(data), stored_name=stored, kind="generated", origin=name)
+                db.add(att)
+                await db.flush()
+                gen_atts.append(att)
+                log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
+                return f"'{fn}' 파일을 생성했습니다. 사용자가 대화 화면에서 바로 내려받을 수 있습니다."
+            except Exception as e:
+                log.status = "error"; log.detail = str(e)[:500]
+                log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
+                raise
+        # 외부 연동 스킬
         skill = skill_map.get(name)
         if not skill:
-            raise ValueError(f"허용되지 않은 스킬: {name}")
+            raise ValueError(f"허용되지 않은 도구: {name}")
         t0 = time.monotonic()
-        log = UsageLog(
-            user_id=current_user.id, username=current_user.username,
-            action="skill", conversation_id=conversation.id,
-            model=skill.name, provider=skill.integration.name,
-            client_ip=ip,
-        )
+        log = UsageLog(user_id=current_user.id, username=current_user.username,
+                       action="skill", conversation_id=conversation.id,
+                       model=skill.name, provider=skill.integration.name, client_ip=ip)
         try:
             result = await execute_skill(skill, skill.integration, params)
-            log.duration_ms = int((time.monotonic() - t0) * 1000)
-            db.add(log)
+            log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
             return result
         except Exception as e:
-            log.status = "error"
-            log.detail = str(e)[:500]
-            log.duration_ms = int((time.monotonic() - t0) * 1000)
-            db.add(log)
+            log.status = "error"; log.detail = str(e)[:500]
+            log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
             raise
 
+    titles = {s.name: s.title for s in skills}
+    titles.update({"create_document": "문서 생성", "create_spreadsheet": "엑셀 생성"})
     tool_ctx = ToolContext(
-        anthropic_tools=[anthropic_tool_def(s) for s in skills],
-        openai_tools=[openai_tool_def(s) for s in skills],
-        titles={s.name: s.title for s in skills},
-        executor=skill_executor,
-    ) if skills else None
-
-    def make_log(**kw) -> UsageLog:
-        return UsageLog(
-            user_id=current_user.id,
-            username=current_user.username,
-            action="chat",
-            conversation_id=conversation.id,
-            model=requested,
-            provider=route.provider,
-            client_ip=ip,
-            duration_ms=int((time.monotonic() - started) * 1000),
-            **kw,
-        )
+        anthropic_tools=gen_tools.anthropic_defs() + [anthropic_tool_def(s) for s in skills],
+        openai_tools=gen_tools.openai_defs() + [openai_tool_def(s) for s in skills],
+        titles=titles,
+        executor=tool_executor,
+    )
 
     try:
         outcome = await run_chat(db, route.provider, route.provider_model_id,
                                  system_prompt, llm_messages, tool_ctx)
-        assistant_content = outcome.text
-        in_tok, out_tok = outcome.input_tokens, outcome.output_tokens
     except HTTPException as e:
         db.add(make_log(status="error", detail=str(e.detail)[:500]))
         await db.commit()
@@ -344,35 +407,10 @@ async def send_message(
         await db.commit()
         raise HTTPException(status_code=502, detail=detail)
 
-    # ---- 응답 저장 ----
-    assistant_msg = Message(
-        conversation_id=conversation.id,
-        role="assistant",
-        content=assistant_content,
-        model=requested,
-        provider=route.provider,
-    )
-    db.add(assistant_msg)
-    db.add(make_log(input_tokens=in_tok, output_tokens=out_tok))
-    conversation.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(assistant_msg)
-
-    return ChatResponse(
-        conversation_id=conversation.id,
-        conversation_title=conversation.title,
-        used_skills=[
-            {"name": s.name, "title": s.title, "status": s.status}
-            for s in outcome.used_skills
-        ],
-        message=MessageResponse(
-            id=assistant_msg.id,
-            role=assistant_msg.role,
-            content=assistant_msg.content,
-            model=assistant_msg.model,
-            provider=assistant_msg.provider,
-            created_at=assistant_msg.created_at,
-        ),
+    return await finalize(
+        outcome.text, in_tok=outcome.input_tokens, out_tok=outcome.output_tokens,
+        gen_atts=gen_atts,
+        used_skills=[{"name": s.name, "title": s.title, "status": s.status} for s in outcome.used_skills],
     )
 
 
@@ -393,6 +431,7 @@ async def list_models(
             "provider": r.provider,
             "provider_label": PROVIDERS.get(r.provider, {}).get("label", r.provider),
             "description": r.description or "",
+            "kind": r.kind or "chat",
         }
         for r in routes
     ]

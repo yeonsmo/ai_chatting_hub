@@ -32,6 +32,8 @@ def to_response(att: Attachment) -> AttachmentResponse:
         content_type=att.content_type,
         size_bytes=att.size_bytes,
         has_text=bool(att.text_content),
+        kind=att.kind or "upload",
+        origin=att.origin,
         created_at=att.created_at,
     )
 
@@ -67,6 +69,21 @@ async def upload_file(
     await db.commit()
     await db.refresh(att)
     return to_response(att)
+
+
+@router.get("/generated", response_model=list[AttachmentResponse])
+async def list_generated(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """내가 만든 생성물(문서·이미지) 보관함 — 최신순."""
+    result = await db.execute(
+        select(Attachment)
+        .where(Attachment.user_id == current_user.id, Attachment.kind == "generated")
+        .order_by(Attachment.id.desc())
+        .limit(500)
+    )
+    return [to_response(a) for a in result.scalars().all()]
 
 
 async def _get_accessible(att_id: int, user: User, db: AsyncSession) -> Attachment:
