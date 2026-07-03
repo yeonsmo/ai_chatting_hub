@@ -111,18 +111,22 @@
   .chip { font:600 9.5px/1 var(--font-sans); letter-spacing:.03em; padding:3px 7px; border-radius:6px; }
   .hidden { display:none !important; }
 
+  /* 가로 오버플로우로 인한 모바일 브라우저 자동 축소(overview) 방지 */
+  html, body { overflow-x:hidden; }
+
   /* ---------- 앱 윈도우 ---------- */
   #shell { min-height:100vh; height:100vh; display:flex; align-items:center; justify-content:center; padding:22px; }
   #appWindow {
-    width:100%; max-width:1340px; height:min(884px,94vh); display:flex; flex-direction:column;
+    width:100%; max-width:min(1340px, 100vw); height:min(884px,94vh); display:flex; flex-direction:column;
     border-radius:var(--r-xl); overflow:hidden; position:relative;
     background:var(--glass-chrome); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
     border:1px solid var(--rim-hair);
     box-shadow:var(--shadow-3), inset 0 1px 0 var(--rim-light);
   }
-  @media (max-width:820px) {
-    #shell { padding:0; }
-    #appWindow { max-width:none; height:100vh; height:100dvh; border-radius:0; border:none; }
+  /* 좁은 화면 OR 터치 기기(데스크톱 사이트 모드로 넓게 보고돼도) → 모바일 풀스크린 셸 */
+  @media (max-width:820px), (pointer:coarse) and (max-width:1024px) {
+    #shell { padding:0; height:100dvh; }
+    #appWindow { max-width:none; width:100%; height:100vh; height:100dvh; border-radius:0; border:none; }
     #titlebar { padding-top:env(safe-area-inset-top); height:calc(46px + env(safe-area-inset-top)); flex-basis:calc(46px + env(safe-area-inset-top)); }
     #composerWrap { padding-bottom:calc(12px + env(safe-area-inset-bottom)) !important; }
     .modal-back { padding:0; }
@@ -131,6 +135,16 @@
     #modelMenu { width:min(342px, calc(100vw - 24px)); max-height:60vh; }
     .msg-wrap { padding:0 14px; }
     #composerWrap { padding-left:12px !important; padding-right:12px !important; }
+    /* 타이틀바: 브랜드 텍스트 줄바꿈 방지 + 보조 라벨 숨김 */
+    #titlebar .tb-brand { white-space:nowrap; }
+    #titlebar .tb-sub { display:none; }
+    /* 채팅 헤더: 모델 버튼이 줄어들 수 있게 */
+    #chatTitle { font-size:16px; }
+    #modelBtn { padding:7px 10px !important; }
+    #modelName { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* 컴포저: Enter 전송 힌트 숨김(터치는 버튼으로 전송) + 모델칩 줄임 */
+    .send-hint { display:none !important; }
+    #compModelName { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   }
 
   /* 타이틀바 */
@@ -154,7 +168,7 @@
     background:var(--glass-thin); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
     border-right:1px solid var(--rim-hair); z-index:30; transition:transform .32s var(--ease);
   }
-  @media (max-width:820px) {
+  @media (max-width:820px), (pointer:coarse) and (max-width:1024px) {
     #sidebar { position:absolute; left:0; top:0; bottom:0; transform:translateX(-100%); box-shadow:var(--shadow-3); background:var(--glass-chrome); }
     #sidebar.open { transform:translateX(0); }
   }
@@ -350,16 +364,16 @@
 
   <!-- 타이틀바 -->
   <div id="titlebar">
-    <div style="display:flex; align-items:center; gap:10px;">
+    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
       <button id="menuBtn" class="tb-btn hidden" style="width:38px;" onclick="toggleSidebar()">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
       </button>
       <div class="brand-mini">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2a0d18" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7C12 2.7 5 10 5 14.5a7 7 0 0 0 14 0C19 10 12 2.7 12 2.7z"/></svg>
       </div>
-      <span style="font:600 12.5px/1 var(--font-sans); color:var(--fg-1);">HP ENGINEERING</span>
-      <span style="width:1px; height:13px; background:var(--rim-hair);"></span>
-      <span style="font:500 12px/1 var(--font-sans); color:var(--fg-3);">AI 허브</span>
+      <span class="tb-brand" style="font:600 12.5px/1 var(--font-sans); color:var(--fg-1);">HP ENGINEERING</span>
+      <span class="tb-sub" style="width:1px; height:13px; background:var(--rim-hair);"></span>
+      <span class="tb-sub" style="font:500 12px/1 var(--font-sans); color:var(--fg-3);">AI 허브</span>
     </div>
     <div style="display:flex; align-items:stretch; height:100%;">
       <button id="themeBtn" class="tb-btn" title="테마 전환" onclick="toggleTheme()">
@@ -536,7 +550,7 @@
                 </div>
               </div>
               <div style="display:flex; align-items:center; gap:11px;">
-                <span style="font:400 11px/1 var(--font-sans); color:var(--fg-3);">Enter 전송</span>
+                <span class="send-hint" style="font:400 11px/1 var(--font-sans); color:var(--fg-3);">Enter 전송</span>
                 <button id="sendBtn" onclick="sendMsg()" class="primary-btn" style="width:40px; height:40px; border-radius:13px; padding:0;">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                 </button>
@@ -856,10 +870,17 @@ async function loadUsage(){
 }
 
 /* ============ 반응형 사이드바 ============ */
-function isNarrow(){ return window.innerWidth<=820; }
+function isNarrow(){
+  // 좁은 화면이거나, 터치 기기가 데스크톱 사이트 모드로 넓게 보고돼도 모바일 UI로 취급
+  return window.innerWidth<=820 ||
+    (window.matchMedia && window.matchMedia('(pointer:coarse)').matches && window.innerWidth<=1024);
+}
 function updateResponsive(){
-  document.getElementById('menuBtn').classList.toggle('hidden', !isNarrow());
-  if(!isNarrow()){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sbOverlay').classList.add('hidden'); }
+  const narrow=isNarrow();
+  document.getElementById('menuBtn').classList.toggle('hidden', !narrow);
+  if(!narrow){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sbOverlay').classList.add('hidden'); }
+  const inp=document.getElementById('input');
+  if(inp) inp.placeholder = narrow ? '무엇이든 물어보세요…' : '무엇이든 물어보세요…   (Shift + Enter 로 줄바꿈)';
 }
 window.addEventListener('resize', updateResponsive);
 function toggleSidebar(force){
@@ -1228,7 +1249,11 @@ function addTyping(id){
 function scrollBottom(){ const s=document.getElementById('msgScroll'); s.scrollTop=s.scrollHeight; }
 
 /* ============ 전송 ============ */
-function handleKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMsg(); } }
+function handleKey(e){
+  // 모바일/터치: Enter는 줄바꿈만, 전송은 전송 버튼으로. 데스크톱: Enter 전송 / Shift+Enter 줄바꿈
+  if(isNarrow()) return;
+  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMsg(); }
+}
 function autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,150)+'px'; }
 
 async function sendMsg(){
