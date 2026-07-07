@@ -305,6 +305,11 @@
   #input { width:100%; border:none; outline:none; background:transparent; resize:none; font:400 14.5px/1.6 var(--font-sans); color:var(--fg-1); max-height:150px; min-height:24px; padding:5px 4px; }
   .comp-icon { width:34px; height:34px; border:none; background:transparent; border-radius:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fg-2); transition:all .15s; }
   .comp-icon:hover { background:var(--fill-2); color:var(--accent); }
+  .comp-icon.rec { color:#fff; background:var(--danger); animation:micpulse 1.1s ease-in-out infinite; }
+  @keyframes micpulse { 0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,.5);} 50%{ box-shadow:0 0 0 6px rgba(239,68,68,0);} }
+  /* 스트리밍 라이브 커서 */
+  .md.streaming::after { content:'▋'; color:var(--accent); margin-left:1px; animation:blink 1s step-end infinite; }
+  @keyframes blink { 50%{ opacity:0; } }
   .pending-chip {
     display:inline-flex; align-items:center; gap:8px; padding:6px 8px 6px 11px;
     background:var(--accent-grad-soft); border:1px solid color-mix(in srgb, var(--accent-pink) 26%, transparent); border-radius:var(--r-sm);
@@ -568,6 +573,9 @@
                 </button>
                 <button class="comp-icon" title="이미지 첨부" onclick="document.getElementById('imgInput').click()">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </button>
+                <button id="micBtn" class="comp-icon" title="음성 입력" onclick="toggleMic()">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                 </button>
                 <span style="width:1px; height:18px; background:rgba(100,116,139,0.22); margin:0 4px;"></span>
                 <div style="display:flex; align-items:center; gap:7px; padding:6px 10px; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:10px;">
@@ -1302,6 +1310,29 @@ function handleKey(e){
 }
 function autoResize(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,150)+'px'; }
 
+// 스트리밍 어시스턴트 버블(라이브 텍스트) 생성
+function addStreamBubble(id){
+  const area=document.getElementById('msgArea');
+  document.getElementById('welcomeBox')?.remove();
+  const d=document.createElement('div'); d.id=id; d.className='msg-fade';
+  const color=modelColor(currentModel);
+  d.innerHTML=`<div style="display:flex; gap:14px;">
+    <div style="width:36px; height:36px; flex:0 0 36px; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; box-shadow:0 7px 16px -7px ${color};">
+      <span style="width:12px; height:12px; border-radius:4px; background:rgba(255,255,255,0.94); transform:rotate(45deg);"></span>
+    </div>
+    <div style="flex:1; min-width:0;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;">
+        <span style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">${esc(modelLabel(currentModel))}</span>
+        <span class="stream-note" style="font:400 11px/1 var(--font-sans); color:var(--fg-3);"></span>
+      </div>
+      <div class="card-ai"><div class="md streaming" style="white-space:pre-wrap;"></div></div>
+    </div>
+  </div>`;
+  area.appendChild(d); scrollBottom();
+  return d;
+}
+function setStreamNote(el, text){ const n=el&&el.querySelector('.stream-note'); if(n) n.textContent=text; }
+
 async function sendMsg(){
   if(busy) return;
   const inp=document.getElementById('input');
@@ -1314,31 +1345,90 @@ async function sendMsg(){
   const attachmentIds=sentAttachments.map(a=>a.id);
   pending=[]; renderPending();
 
-  const tid='t'+Date.now();
-  addTyping(tid);
+  const sid='s'+Date.now();
+  const streamEl=addStreamBubble(sid);
+  const liveMd=streamEl.querySelector('.md');
+  let acc='';
   busy=true;
   document.getElementById('sendBtn').disabled=true;
 
   try {
-    const r=await api('POST','/chat/send',{
-      content, conversation_id:convId, project_id:convId?null:activeProjectId,
-      model:currentModel, attachment_ids:attachmentIds,
+    const res=await fetch('/api/chat/send/stream', {
+      method:'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, token?{'Authorization':'Bearer '+token}:{}),
+      body: JSON.stringify({content, conversation_id:convId, project_id:convId?null:activeProjectId,
+        model:currentModel, attachment_ids:attachmentIds}),
     });
-    document.getElementById(tid)?.remove();
-    convId=r.conversation_id;
-    addMsg('assistant', r.message.content, Object.assign({}, r.message, {used_skills:r.used_skills||[]}));
-    setHeader(r.conversation_title, (activeProjectId?(projects.find(p=>p.id===activeProjectId)||{}).name+' · ':'')+'방금 응답함', true);
-    await Promise.all([loadConvs(), loadUsage()]);
+    if(!res.ok || !res.body){
+      let detail='HTTP '+res.status;
+      try { const j=await res.json(); if(j&&j.detail) detail=j.detail; } catch(_){}
+      throw new Error(detail);
+    }
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    let finalPayload=null, errDetail=null;
+    while(true){
+      const {value,done}=await reader.read();
+      if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      let idx;
+      while((idx=buf.indexOf('\n\n'))>=0){
+        const block=buf.slice(0,idx); buf=buf.slice(idx+2);
+        const line=block.split('\n').find(l=>l.startsWith('data:'));
+        if(!line) continue;
+        let ev; try{ ev=JSON.parse(line.slice(5).trim()); }catch(_){ continue; }
+        if(ev.type==='start'){ if(ev.conversation_id) convId=ev.conversation_id; }
+        else if(ev.type==='delta'){ acc+=ev.text; liveMd.textContent=acc; scrollBottom(); }
+        else if(ev.type==='tool'){ setStreamNote(streamEl, '🔧 '+ev.title+' 실행 중…'); }
+        else if(ev.type==='done'){ finalPayload=ev; }
+        else if(ev.type==='error'){ errDetail=ev.detail; }
+      }
+    }
+    document.getElementById(sid)?.remove();
+    if(errDetail){ addMsg('error','⚠ '+errDetail); loadConvs(); }
+    else if(finalPayload && finalPayload.message){
+      convId=finalPayload.conversation_id;
+      addMsg('assistant', finalPayload.message.content,
+             Object.assign({}, finalPayload.message, {used_skills:finalPayload.used_skills||[]}));
+      setHeader(finalPayload.conversation_title, (activeProjectId?(projects.find(p=>p.id===activeProjectId)||{}).name+' · ':'')+'방금 응답함', true);
+      await Promise.all([loadConvs(), loadUsage()]);
+    } else if(acc){
+      addMsg('assistant', acc, {}); loadConvs();
+    } else {
+      addMsg('error','⚠ 응답을 받지 못했습니다'); loadConvs();
+    }
   } catch(e){
-    document.getElementById(tid)?.remove();
-    addMsg('error','⚠ '+e.message);
-    // 사용자 메시지는 서버에 저장되었으므로 목록만 갱신
+    document.getElementById(sid)?.remove();
+    addMsg('error','⚠ '+(e.message||'전송 실패'));
     loadConvs();
   } finally {
     busy=false;
     document.getElementById('sendBtn').disabled=false;
     inp.focus();
   }
+}
+
+/* ============ 음성 입력 (STT, Web Speech API) ============ */
+let _recog=null, _recording=false;
+function updateMicUI(){ const b=document.getElementById('micBtn'); if(b) b.classList.toggle('rec', _recording); }
+function toggleMic(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ toast('이 브라우저는 음성 입력을 지원하지 않아요 (크롬 권장)', true); return; }
+  if(_recording){ try{ _recog&&_recog.stop(); }catch(_){}; return; }
+  const inp=document.getElementById('input');
+  const baseVal=inp.value.trim();
+  _recog=new SR(); _recog.lang='ko-KR'; _recog.interimResults=true; _recog.continuous=false;
+  _recog.onresult=(e)=>{
+    let interim='', finalt='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalt+=t; else interim+=t;
+    }
+    inp.value=(baseVal?baseVal+' ':'')+(finalt||interim); autoResize(inp);
+  };
+  _recog.onend=()=>{ _recording=false; updateMicUI(); inp.focus(); };
+  _recog.onerror=(ev)=>{ _recording=false; updateMicUI(); if(ev.error!=='no-speech'&&ev.error!=='aborted') toast('음성 입력 오류: '+ev.error, true); };
+  _recording=true; updateMicUI();
+  try{ _recog.start(); }catch(_){ _recording=false; updateMicUI(); }
 }
 
 /* ============ 대화 액션 ============ */
