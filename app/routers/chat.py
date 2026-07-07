@@ -1,9 +1,11 @@
 import base64
+import json
 import time
 from datetime import datetime
+from types import SimpleNamespace
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
@@ -11,7 +13,7 @@ from app.dependencies import get_current_user
 from app.file_utils import stored_path, write_bytes
 from app.models import (User, Conversation, Message, Attachment, Project, UsageLog,
                         ModelRoute, Skill, Integration)
-from app.providers import (run_chat, run_image, friendly_api_error, ToolContext,
+from app.providers import (run_chat, run_chat_stream, run_image, friendly_api_error, ToolContext,
                            ANTHROPIC_FAMILY, PROVIDERS)
 from app.roles import role_level, has_min_role
 from app.routers.files import to_response as attachment_response
@@ -179,13 +181,10 @@ async def _load_attachments_map(db: AsyncSession, message_ids: list[int]) -> dic
     return grouped
 
 
-@router.post("/send", response_model=ChatResponse)
-async def send_message(
-    request: MessageCreate,
-    http_request: Request,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def _prepare_send(request: MessageCreate, http_request: Request,
+                        current_user: User, db: AsyncSession) -> SimpleNamespace:
+    """/send·/send/stream 공용 준비: 검증·대화·유저메시지 저장·히스토리·라우트·
+    도구 컨텍스트 구성. finalize/make_log 클로저와 함께 컨텍스트를 돌려준다."""
     content = request.content.strip()
     if not content and not request.attachment_ids:
         raise HTTPException(status_code=400, detail="메시지 내용을 입력해주세요")
@@ -304,31 +303,18 @@ async def send_message(
             ),
         )
 
-    # ==================== 이미지 생성 경로 ====================
-    if route.kind == "image":
-        if not content:
-            raise HTTPException(status_code=400, detail="이미지로 만들 내용을 입력해주세요")
-        try:
-            images = await run_image(db, route.provider, route.provider_model_id, content)
-        except HTTPException as e:
-            db.add(make_log(status="error", detail=str(e.detail)[:500])); await db.commit(); raise
-        except Exception as e:
-            detail = friendly_api_error(e)
-            db.add(make_log(status="error", detail=detail[:500])); await db.commit()
-            raise HTTPException(status_code=502, detail=detail)
-        gen_atts = []
-        base = gen_tools.safe_filename(content[:40], "생성이미지", "png")
-        for i, img in enumerate(images):
-            ext = (img.content_type.split("/")[-1] or "png").split(";")[0][:5]
-            stored = write_bytes(img.data, ext)
-            fn = base if len(images) == 1 else base.replace(".png", f"_{i+1}.png")
-            att = Attachment(user_id=current_user.id, filename=fn, content_type=img.content_type,
-                             size_bytes=len(img.data), stored_name=stored, kind="generated", origin=requested)
-            db.add(att); gen_atts.append(att)
-        return await finalize("요청하신 이미지를 생성했어요.", gen_atts=gen_atts,
-                              used_skills=[{"name": requested, "title": route.label, "status": "success"}])
+    ctx = SimpleNamespace(
+        conversation=conversation, requested=requested, route=route, content=content,
+        make_log=make_log, finalize=finalize, kind=route.kind or "chat",
+    )
 
-    # ==================== 대화(+도구) 경로 ====================
+    # ---- 이미지 생성 라우트: LLM 준비 없이 여기서 반환 ----
+    if route.kind == "image":
+        ctx.kind = "image"
+        return ctx
+
+    # ==================== 대화(+도구) 경로 준비 ====================
+    ctx.kind = "chat"
     is_anthropic_family = route.provider in ANTHROPIC_FAMILY
     llm_messages = []
     for m in history:
@@ -387,31 +373,135 @@ async def send_message(
 
     titles = {s.name: s.title for s in skills}
     titles.update({"create_document": "문서 생성", "create_spreadsheet": "엑셀 생성"})
-    tool_ctx = ToolContext(
+    ctx.llm_messages = llm_messages
+    ctx.system_prompt = system_prompt
+    ctx.gen_atts = gen_atts
+    ctx.tool_ctx = ToolContext(
         anthropic_tools=gen_tools.anthropic_defs() + [anthropic_tool_def(s) for s in skills],
         openai_tools=gen_tools.openai_defs() + [openai_tool_def(s) for s in skills],
         titles=titles,
         executor=tool_executor,
     )
+    return ctx
 
+
+async def _generate_images(ctx: SimpleNamespace, current_user: User, db: AsyncSession) -> list[Attachment]:
+    """이미지 라우트 실행 → 생성물 Attachment 목록. 실패 시 로그 남기고 예외."""
+    if not ctx.content:
+        raise HTTPException(status_code=400, detail="이미지로 만들 내용을 입력해주세요")
     try:
-        outcome = await run_chat(db, route.provider, route.provider_model_id,
-                                 system_prompt, llm_messages, tool_ctx)
+        images = await run_image(db, ctx.route.provider, ctx.route.provider_model_id, ctx.content)
     except HTTPException as e:
-        db.add(make_log(status="error", detail=str(e.detail)[:500]))
-        await db.commit()
-        raise
+        db.add(ctx.make_log(status="error", detail=str(e.detail)[:500])); await db.commit(); raise
     except Exception as e:
         detail = friendly_api_error(e)
-        db.add(make_log(status="error", detail=detail[:500]))
-        await db.commit()
+        db.add(ctx.make_log(status="error", detail=detail[:500])); await db.commit()
+        raise HTTPException(status_code=502, detail=detail)
+    gen_atts = []
+    base = gen_tools.safe_filename(ctx.content[:40], "생성이미지", "png")
+    for i, img in enumerate(images):
+        stored = write_bytes(img.data, (img.content_type.split("/")[-1] or "png").split(";")[0][:5])
+        fn = base if len(images) == 1 else base.replace(".png", f"_{i+1}.png")
+        att = Attachment(user_id=current_user.id, filename=fn, content_type=img.content_type,
+                         size_bytes=len(img.data), stored_name=stored, kind="generated", origin=ctx.requested)
+        db.add(att); gen_atts.append(att)
+    return gen_atts
+
+
+@router.post("/send", response_model=ChatResponse)
+async def send_message(
+    request: MessageCreate,
+    http_request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ctx = await _prepare_send(request, http_request, current_user, db)
+
+    if ctx.kind == "image":
+        gen_atts = await _generate_images(ctx, current_user, db)
+        return await ctx.finalize("요청하신 이미지를 생성했어요.", gen_atts=gen_atts,
+                                  used_skills=[{"name": ctx.requested, "title": ctx.route.label, "status": "success"}])
+
+    try:
+        outcome = await run_chat(db, ctx.route.provider, ctx.route.provider_model_id,
+                                 ctx.system_prompt, ctx.llm_messages, ctx.tool_ctx)
+    except HTTPException as e:
+        db.add(ctx.make_log(status="error", detail=str(e.detail)[:500])); await db.commit(); raise
+    except Exception as e:
+        detail = friendly_api_error(e)
+        db.add(ctx.make_log(status="error", detail=detail[:500])); await db.commit()
         raise HTTPException(status_code=502, detail=detail)
 
-    return await finalize(
+    return await ctx.finalize(
         outcome.text, in_tok=outcome.input_tokens, out_tok=outcome.output_tokens,
-        gen_atts=gen_atts,
+        gen_atts=ctx.gen_atts,
         used_skills=[{"name": s.name, "title": s.title, "status": s.status} for s in outcome.used_skills],
     )
+
+
+def _sse(obj: dict) -> str:
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
+@router.post("/send/stream")
+async def send_message_stream(
+    request: MessageCreate,
+    http_request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """SSE 스트리밍 응답. 이벤트: start / delta / tool / skill / done / error."""
+    ctx = await _prepare_send(request, http_request, current_user, db)
+
+    async def gen():
+        yield _sse({"type": "start", "conversation_id": ctx.conversation.id,
+                    "conversation_title": ctx.conversation.title})
+        try:
+            if ctx.kind == "image":
+                try:
+                    gen_atts = await _generate_images(ctx, current_user, db)
+                except HTTPException as e:
+                    yield _sse({"type": "error", "detail": str(e.detail)}); return
+                resp = await ctx.finalize("요청하신 이미지를 생성했어요.", gen_atts=gen_atts,
+                                          used_skills=[{"name": ctx.requested, "title": ctx.route.label, "status": "success"}])
+                yield _sse({"type": "done", **resp.model_dump(mode="json")})
+                return
+
+            outcome = None
+            try:
+                async for kind, payload in run_chat_stream(
+                        db, ctx.route.provider, ctx.route.provider_model_id,
+                        ctx.system_prompt, ctx.llm_messages, ctx.tool_ctx):
+                    if kind == "delta":
+                        yield _sse({"type": "delta", "text": payload})
+                    elif kind == "tool":
+                        yield _sse({"type": "tool", "title": payload})
+                    elif kind == "skill":
+                        yield _sse({"type": "skill", "name": payload.name,
+                                    "title": payload.title, "status": payload.status})
+                    elif kind == "done":
+                        outcome = payload
+            except HTTPException as e:
+                db.add(ctx.make_log(status="error", detail=str(e.detail)[:500])); await db.commit()
+                yield _sse({"type": "error", "detail": str(e.detail)}); return
+            except Exception as e:
+                detail = friendly_api_error(e)
+                db.add(ctx.make_log(status="error", detail=detail[:500])); await db.commit()
+                yield _sse({"type": "error", "detail": detail}); return
+
+            if outcome is None:
+                yield _sse({"type": "error", "detail": "빈 응답"}); return
+            resp = await ctx.finalize(
+                outcome.text, in_tok=outcome.input_tokens, out_tok=outcome.output_tokens,
+                gen_atts=ctx.gen_atts,
+                used_skills=[{"name": s.name, "title": s.title, "status": s.status} for s in outcome.used_skills],
+            )
+            yield _sse({"type": "done", **resp.model_dump(mode="json")})
+        except Exception as e:
+            yield _sse({"type": "error", "detail": friendly_api_error(e)})
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("/models")

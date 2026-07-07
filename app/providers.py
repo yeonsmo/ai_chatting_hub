@@ -334,6 +334,180 @@ async def run_chat(db: AsyncSession, provider: str, model_id: str,
     raise HTTPException(status_code=500, detail=f"알 수 없는 프로바이더: {provider}")
 
 
+# ---------------- 스트리밍 (SSE) ----------------
+# run_chat_stream은 async generator로 이벤트 튜플을 yield 한다:
+#   ("delta", str)          — 실시간 텍스트 조각
+#   ("tool", title)         — 도구 실행 시작
+#   ("skill", SkillCall)    — 도구 실행 결과(성공/실패)
+#   ("done", ChatOutcome)   — 최종 결과(누적 텍스트+토큰+used_skills)
+
+async def _stream_anthropic(provider, model_id, key, extra, system_prompt, messages, tool_ctx):
+    client = _make_anthropic_client(provider, key, extra)
+    kwargs = {"model": model_id, "max_tokens": MAX_TOKENS, "messages": list(messages)}
+    if system_prompt:
+        kwargs["system"] = system_prompt
+    if tool_ctx and tool_ctx.anthropic_tools:
+        kwargs["tools"] = tool_ctx.anthropic_tools
+
+    outcome = ChatOutcome(text="")
+    streamed: list[str] = []
+    in_tok = out_tok = 0
+    rounds = 0
+    while True:
+        async with client.messages.stream(**kwargs) as stream:
+            async for event in stream:
+                if getattr(event, "type", "") == "content_block_delta" and \
+                        getattr(event.delta, "type", "") == "text_delta":
+                    chunk = event.delta.text
+                    streamed.append(chunk)
+                    yield ("delta", chunk)
+            final = await stream.get_final_message()
+        usage = getattr(final, "usage", None)
+        in_tok += getattr(usage, "input_tokens", 0) or 0
+        out_tok += getattr(usage, "output_tokens", 0) or 0
+        if getattr(final, "stop_reason", None) == "tool_use" and tool_ctx and rounds < MAX_TOOL_ROUNDS:
+            rounds += 1
+            kwargs["messages"].append({"role": "assistant", "content": [b.model_dump() for b in final.content]})
+            tool_results = []
+            for block in final.content:
+                if getattr(block, "type", "") != "tool_use":
+                    continue
+                name = block.name
+                yield ("tool", tool_ctx.titles.get(name, name))
+                try:
+                    result_text = await tool_ctx.executor(name, dict(block.input or {}))
+                    sc = SkillCall(name=name, title=tool_ctx.titles.get(name, name), status="success")
+                except Exception as e:
+                    result_text = f"오류: {str(e)[:300]}"
+                    sc = SkillCall(name=name, title=tool_ctx.titles.get(name, name), status="error", detail=str(e)[:200])
+                outcome.used_skills.append(sc)
+                yield ("skill", sc)
+                tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text[:20000]})
+            kwargs["messages"].append({"role": "user", "content": tool_results})
+            continue
+        break
+    outcome.text = "".join(streamed).strip()
+    outcome.input_tokens, outcome.output_tokens = in_tok or None, out_tok or None
+    if not outcome.text and not outcome.used_skills:
+        raise _empty_response_error()
+    yield ("done", outcome)
+
+
+async def _openai_stream_create(client, model_id: str, messages: list, tools: list | None):
+    base = {"model": model_id, "messages": messages, "stream": True}
+    if tools:
+        base["tools"] = tools
+    attempts = (
+        {"max_completion_tokens": MAX_TOKENS, "stream_options": {"include_usage": True}},
+        {"max_tokens": MAX_TOKENS, "stream_options": {"include_usage": True}},
+        {"max_tokens": MAX_TOKENS},
+    )
+    last = None
+    for extra_kw in attempts:
+        try:
+            return await client.chat.completions.create(**base, **extra_kw)
+        except openai.BadRequestError as e:
+            last = e
+            continue
+    raise last
+
+
+async def _stream_openai(provider, model_id, key, extra, system_prompt, messages, tool_ctx):
+    client = _make_openai_client(provider, key, extra)
+    full = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + list(messages)
+    tools = tool_ctx.openai_tools if tool_ctx and tool_ctx.openai_tools else None
+
+    outcome = ChatOutcome(text="")
+    streamed: list[str] = []
+    in_tok = out_tok = 0
+    rounds = 0
+    while True:
+        content_parts: list[str] = []
+        tool_acc: dict = {}   # index → {id, name, args}
+        finish = None
+        stream = await _openai_stream_create(client, model_id, full, tools)
+        async for chunk in stream:
+            usage = getattr(chunk, "usage", None)
+            if usage:
+                in_tok += getattr(usage, "prompt_tokens", 0) or 0
+                out_tok += getattr(usage, "completion_tokens", 0) or 0
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            ch = choices[0]
+            delta = getattr(ch, "delta", None)
+            if delta is not None:
+                if getattr(delta, "content", None):
+                    content_parts.append(delta.content)
+                    streamed.append(delta.content)
+                    yield ("delta", delta.content)
+                for tc in (getattr(delta, "tool_calls", None) or []):
+                    slot = tool_acc.setdefault(tc.index, {"id": None, "name": "", "args": ""})
+                    if getattr(tc, "id", None):
+                        slot["id"] = tc.id
+                    fn = getattr(tc, "function", None)
+                    if fn:
+                        if getattr(fn, "name", None):
+                            slot["name"] = fn.name
+                        if getattr(fn, "arguments", None):
+                            slot["args"] += fn.arguments
+            if getattr(ch, "finish_reason", None):
+                finish = ch.finish_reason
+        if finish == "tool_calls" and tools and tool_acc and rounds < MAX_TOOL_ROUNDS:
+            rounds += 1
+            full.append({
+                "role": "assistant",
+                "content": "".join(content_parts) or None,
+                "tool_calls": [{"id": s["id"], "type": "function",
+                                "function": {"name": s["name"], "arguments": s["args"] or "{}"}}
+                               for s in tool_acc.values()],
+            })
+            for s in tool_acc.values():
+                name = s["name"]
+                yield ("tool", tool_ctx.titles.get(name, name))
+                try:
+                    params = json.loads(s["args"] or "{}")
+                except ValueError:
+                    params = {}
+                try:
+                    result_text = await tool_ctx.executor(name, params)
+                    sc = SkillCall(name=name, title=tool_ctx.titles.get(name, name), status="success")
+                except Exception as e:
+                    result_text = f"오류: {str(e)[:300]}"
+                    sc = SkillCall(name=name, title=tool_ctx.titles.get(name, name), status="error", detail=str(e)[:200])
+                outcome.used_skills.append(sc)
+                yield ("skill", sc)
+                full.append({"role": "tool", "tool_call_id": s["id"], "content": result_text[:20000]})
+            continue
+        break
+    outcome.text = "".join(streamed).strip()
+    outcome.input_tokens, outcome.output_tokens = in_tok or None, out_tok or None
+    if not outcome.text and not outcome.used_skills:
+        raise _empty_response_error()
+    yield ("done", outcome)
+
+
+async def run_chat_stream(db: AsyncSession, provider: str, model_id: str,
+                          system_prompt: str | None, messages: list,
+                          tool_ctx: ToolContext | None):
+    """run_chat의 스트리밍 버전. 이벤트 튜플을 async yield 한다."""
+    key, extra = await resolve_credentials(db, provider)
+    if provider in ANTHROPIC_FAMILY:
+        async for ev in _stream_anthropic(provider, model_id, key, extra, system_prompt, messages, tool_ctx):
+            yield ev
+    elif provider in OPENAI_FAMILY:
+        async for ev in _stream_openai(provider, model_id, key, extra, system_prompt, messages, tool_ctx):
+            yield ev
+    elif provider == "gemini":
+        # Gemini REST 경로는 스트리밍 미지원 → 전체 텍스트를 한 번에 델타로 흘려보냄
+        outcome = await _run_gemini(model_id, key, system_prompt, messages)
+        if outcome.text:
+            yield ("delta", outcome.text)
+        yield ("done", outcome)
+    else:
+        raise HTTPException(status_code=500, detail=f"알 수 없는 프로바이더: {provider}")
+
+
 # ---------------- 이미지 생성 ----------------
 
 @dataclass
