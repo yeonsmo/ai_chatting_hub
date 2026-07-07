@@ -132,6 +132,32 @@ def _make_anthropic_client(provider: str, key: str, extra: dict):
     return anthropic.AsyncAnthropic(api_key=key, timeout=REQUEST_TIMEOUT)
 
 
+def _anthropic_assistant_content(blocks) -> list:
+    """assistant 응답 블록을 '입력으로 다시 보낼 수 있는' 최소 필드만 남겨 재구성한다.
+    SDK 신버전이 text 블록에 붙이는 parsed_output 등 출력 전용 필드를 그대로 되돌려
+    보내면 Anthropic이 400(Extra inputs are not permitted)을 내므로 화이트리스트로 정리."""
+    out = []
+    for b in blocks:
+        t = getattr(b, "type", "")
+        if t == "text":
+            out.append({"type": "text", "text": getattr(b, "text", "")})
+        elif t == "tool_use":
+            out.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+        elif t == "thinking":
+            d = {"type": "thinking", "thinking": getattr(b, "thinking", "")}
+            sig = getattr(b, "signature", None)
+            if sig:
+                d["signature"] = sig
+            out.append(d)
+        elif t == "redacted_thinking":
+            out.append({"type": "redacted_thinking", "data": getattr(b, "data", "")})
+        else:
+            d = b.model_dump()
+            d.pop("parsed_output", None)
+            out.append(d)
+    return out
+
+
 async def _run_anthropic(provider: str, model_id: str, key: str, extra: dict,
                          system_prompt: str | None, messages: list,
                          tool_ctx: ToolContext | None) -> ChatOutcome:
@@ -153,7 +179,7 @@ async def _run_anthropic(provider: str, model_id: str, key: str, extra: dict,
         in_tok += getattr(usage, "input_tokens", 0) or 0
         out_tok += getattr(usage, "output_tokens", 0) or 0
 
-        kwargs["messages"].append({"role": "assistant", "content": [b.model_dump() for b in response.content]})
+        kwargs["messages"].append({"role": "assistant", "content": _anthropic_assistant_content(response.content)})
         tool_results = []
         for block in response.content:
             if getattr(block, "type", "") != "tool_use":
@@ -367,7 +393,7 @@ async def _stream_anthropic(provider, model_id, key, extra, system_prompt, messa
         out_tok += getattr(usage, "output_tokens", 0) or 0
         if getattr(final, "stop_reason", None) == "tool_use" and tool_ctx and rounds < MAX_TOOL_ROUNDS:
             rounds += 1
-            kwargs["messages"].append({"role": "assistant", "content": [b.model_dump() for b in final.content]})
+            kwargs["messages"].append({"role": "assistant", "content": _anthropic_assistant_content(final.content)})
             tool_results = []
             for block in final.content:
                 if getattr(block, "type", "") != "tool_use":
@@ -547,6 +573,13 @@ async def _run_openai_image(provider: str, model_id: str, key: str, extra: dict,
             if "response_format" in r.text:
                 payload.pop("response_format", None)
                 r = await client.post(url, headers=headers, json=payload)
+        if r.status_code in (404, 405):
+            # 엔드포인트 자체가 없음 → 이 프로바이더는 이미지 생성 미지원(예: 가비아 AI Hub)
+            raise HTTPException(
+                status_code=502,
+                detail="이 프로바이더는 이미지 생성 API를 제공하지 않습니다. "
+                       "관리자 패널에서 OpenAI 또는 Gemini 이미지 모델을 등록해 사용하세요.",
+            )
         r.raise_for_status()
         data = r.json()
     out = []
