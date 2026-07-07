@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete, update
 from app.database import get_db
 from app.dependencies import get_admin_user, get_superadmin_user
-from app.models import User, UserRole
+from app.models import (User, UserRole, Conversation, Message, Attachment,
+                        Project, UsageLog, APIKey, Integration, Skill)
 from app.schemas import UserCreate, UserResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -86,6 +87,24 @@ async def delete_user(
 
     if not user or user.role == UserRole.superadmin:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="본인 계정은 삭제할 수 없습니다")
+
+    # 연결 데이터 정리(외래키 순서 준수). 대화·프로젝트·첨부는 삭제,
+    # 사용 로그는 감사 보존을 위해 user_id만 NULL, 관리자 산출물(API키/연동/스킬)은 이관/NULL.
+    conv_ids = (await db.execute(
+        select(Conversation.id).where(Conversation.user_id == user_id))).scalars().all()
+    await db.execute(delete(Attachment).where(Attachment.user_id == user_id))
+    if conv_ids:
+        await db.execute(delete(Message).where(Message.conversation_id.in_(conv_ids)))
+    await db.execute(delete(Conversation).where(Conversation.user_id == user_id))
+    await db.execute(delete(Project).where(Project.user_id == user_id))
+    await db.execute(update(UsageLog).where(UsageLog.user_id == user_id).values(user_id=None))
+    # API 키는 시스템 공용이므로 삭제하지 않고 소유를 삭제 수행자(최고관리자)로 이관
+    await db.execute(update(APIKey).where(APIKey.created_by == user_id).values(created_by=current_user.id))
+    await db.execute(update(Integration).where(Integration.created_by == user_id).values(created_by=None))
+    await db.execute(update(Skill).where(Skill.created_by == user_id).values(created_by=None))
+    await db.execute(update(User).where(User.created_by == user_id).values(created_by=None))
 
     await db.delete(user)
     await db.commit()
