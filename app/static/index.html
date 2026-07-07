@@ -34,6 +34,16 @@
     --sp:8px; --r-sm:12px; --r-md:18px; --r-lg:22px; --r-xl:30px; --r-pill:999px;
     --ease:cubic-bezier(.32,.72,0,1); --spring:cubic-bezier(.34,1.45,.64,1);
     --ok:#4ADE80; --warn:#FBBF24; --danger:#FF6B6B; --info:#5BB8FF;
+
+    /* 가변 타이포(clamp) — 창이 줄어도 글자가 비례 축소돼 뭉개지지 않음 */
+    --fs-display:clamp(26px,3.4vw,34px);
+    --fs-h1:clamp(20px,2.4vw,27px);
+    --fs-h2:clamp(16px,1.7vw,20px);
+    --fs-h3:clamp(14.5px,1.4vw,17px);
+    --fs-body:clamp(13.5px,1.15vw,15px);
+    --fs-body-sm:clamp(12px,1vw,13px);
+    --fs-label:clamp(12px,1vw,13px);
+    --fs-caption:clamp(10.5px,.85vw,11.5px);
   }
   [data-theme="dark"] {
     color-scheme:dark;
@@ -49,14 +59,15 @@
   }
   [data-theme="light"] {
     color-scheme:light;
-    --void:#e9e7ef; --void-2:#f4f2f8;
-    --fg-1:rgba(18,18,26,.94); --fg-2:rgba(28,28,40,.62); --fg-3:rgba(28,28,40,.42);
-    --glass-thin:rgba(255,255,255,.45); --glass:rgba(255,255,255,.60); --glass-thick:rgba(255,255,255,.75);
-    --glass-chrome:rgba(255,255,255,.68);
-    --rim-light:rgba(255,255,255,.9); --rim-hair:rgba(120,120,140,.18); --rim-dark:rgba(120,120,140,.12);
-    --fill-1:rgba(120,120,140,.08); --fill-2:rgba(120,120,140,.15); --fill-strong:rgba(120,120,140,.24);
-    --shadow-1:0 2px 10px rgba(80,70,110,.10); --shadow-2:0 10px 30px rgba(80,70,110,.16); --shadow-3:0 24px 64px rgba(80,70,110,.22);
-    --blur:22px; --sat:160%;
+    --void:#e6e8f0; --void-2:#f1f2f8;
+    /* 가독성 향상: 본문/보조 텍스트 대비를 높이고 유리 표면을 더 불투명하게 */
+    --fg-1:rgba(15,17,28,.96); --fg-2:rgba(30,34,52,.74); --fg-3:rgba(40,44,64,.56);
+    --glass-thin:rgba(255,255,255,.58); --glass:rgba(255,255,255,.72); --glass-thick:rgba(255,255,255,.82);
+    --glass-chrome:rgba(255,255,255,.82);
+    --rim-light:rgba(255,255,255,.95); --rim-hair:rgba(70,74,100,.20); --rim-dark:rgba(70,74,100,.10);
+    --fill-1:rgba(70,74,100,.07); --fill-2:rgba(70,74,100,.13); --fill-strong:rgba(70,74,100,.22);
+    --shadow-1:0 2px 10px rgba(50,45,80,.12); --shadow-2:0 10px 30px rgba(50,45,80,.18); --shadow-3:0 24px 64px rgba(50,45,80,.24);
+    --blur:22px; --sat:150%;
     --wallpaper:url("/static/assets/wallpaper-azure.svg");
   }
 
@@ -233,7 +244,7 @@
     flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 22px;
     border-bottom:1px solid var(--rim-hair); background:transparent; position:relative; z-index:25;
   }
-  #chatTitle { margin:0; font:700 16px/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #chatTitle { margin:0; font:700 var(--fs-h3)/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   /* 모델 드롭다운 */
   #modelMenu {
@@ -253,7 +264,7 @@
     background:var(--accent-grad-soft); border:1px solid color-mix(in srgb, var(--accent-pink) 28%, transparent);
     backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
     box-shadow:var(--shadow-1), inset 0 1px 0 var(--rim-light);
-    font:400 14.5px/1.7 var(--font-sans); white-space:pre-wrap; word-break:break-word;
+    font:400 var(--fs-body)/1.7 var(--font-sans); white-space:pre-wrap; word-break:break-word;
   }
   .card-ai {
     padding:15px 18px; background:var(--glass); backdrop-filter:blur(16px) saturate(var(--sat)); -webkit-backdrop-filter:blur(16px) saturate(var(--sat));
@@ -267,12 +278,12 @@
   .msg-fade { animation:fadeUp .25s; }
 
   /* 마크다운 콘텐츠 */
-  .md { font:400 14.5px/1.8 var(--font-sans); color:var(--fg-1); word-break:break-word; }
+  .md { font:400 var(--fs-body)/1.8 var(--font-sans); color:var(--fg-1); word-break:break-word; }
   .md > *:first-child { margin-top:0; }
   .md > *:last-child { margin-bottom:0; }
-  .md h1 { font-size:1.35rem; font-weight:700; margin:.8rem 0 .45rem; color:var(--fg-1); }
-  .md h2 { font-size:1.18rem; font-weight:700; margin:.75rem 0 .4rem; color:var(--fg-1); }
-  .md h3 { font-size:1.04rem; font-weight:600; margin:.6rem 0 .35rem; color:var(--fg-1); }
+  .md h1 { font-size:var(--fs-h1); font-weight:700; margin:.8rem 0 .45rem; color:var(--fg-1); }
+  .md h2 { font-size:var(--fs-h2); font-weight:700; margin:.75rem 0 .4rem; color:var(--fg-1); }
+  .md h3 { font-size:var(--fs-h3); font-weight:600; margin:.6rem 0 .35rem; color:var(--fg-1); }
   .md p { margin:.45rem 0; color:var(--fg-2); }
   .md ul { list-style:disc; padding-left:1.4rem; margin:.45rem 0; color:var(--fg-2); }
   .md ol { list-style:decimal; padding-left:1.4rem; margin:.45rem 0; color:var(--fg-2); }
@@ -407,6 +418,9 @@
       <span class="tb-sub" style="font:500 12px/1 var(--font-sans); color:var(--fg-3);">AI 허브</span>
     </div>
     <div style="display:flex; align-items:stretch; height:100%;">
+      <button id="accentBtn" class="tb-btn" title="테마 색상" onclick="toggleAccentMenu(event)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.2" fill="currentColor"/><circle cx="17.5" cy="10.5" r="1.2" fill="currentColor"/><circle cx="8.5" cy="7.5" r="1.2" fill="currentColor"/><circle cx="6.5" cy="12.5" r="1.2" fill="currentColor"/><path d="M12 2a10 10 0 0 0 0 20c1.7 0 2-1.5 1-2.5-1-1-1-2.5.5-2.5H17a5 5 0 0 0 5-5c0-5-4.5-8-10-8z"/></svg>
+      </button>
       <button id="themeBtn" class="tb-btn" title="테마 전환" onclick="toggleTheme()">
         <svg id="themeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
       </button>
@@ -665,6 +679,17 @@
   </div>
 </div>
 
+<!-- ================= 테마 색상 팝오버 ================= -->
+<div id="accentMenu" class="hidden" style="position:fixed; z-index:70; width:236px; padding:14px; border-radius:var(--r-lg); background:var(--glass-chrome); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat)); border:1px solid var(--rim-hair); box-shadow:var(--shadow-3), inset 0 1px 0 var(--rim-light);">
+  <div style="font:700 12px/1 var(--font-sans); color:var(--fg-1); margin-bottom:10px;">테마 색상</div>
+  <div id="accentSwatches" style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-bottom:12px;"></div>
+  <label style="display:flex; align-items:center; justify-content:space-between; gap:8px; font:600 11.5px/1 var(--font-sans); color:var(--fg-2);">
+    직접 선택
+    <input id="accentCustom" type="color" value="#FF7A4D" oninput="setAccent({custom:this.value})"
+      style="width:40px; height:26px; border:1px solid var(--rim-hair); border-radius:8px; background:transparent; cursor:pointer; padding:0;">
+  </label>
+</div>
+
 <!-- ================= 생성물 보관함 모달 ================= -->
 <div id="galleryModal" class="modal-back hidden" onclick="if(event.target===this)closeGallery()">
   <div class="modal-card" style="width:100%; max-width:820px; max-height:88vh; display:flex; flex-direction:column; overflow:hidden;">
@@ -844,6 +869,62 @@ function toggleTheme(){
   applyTheme(cur==='dark'?'light':'dark');
 }
 applyTheme(localStorage.getItem('theme') || 'dark');
+
+/* ============ 테마 색상 개인화 ============ */
+const ACCENTS = {
+  coral:   {c1:'#FF8A5B', c2:'#FF5BA0', a:'#FF7A4D', p:'#FF4F9A'},
+  ocean:   {c1:'#38BDF8', c2:'#6366F1', a:'#3B82F6', p:'#6366F1'},
+  violet:  {c1:'#A78BFA', c2:'#EC4899', a:'#8B5CF6', p:'#D946EF'},
+  emerald: {c1:'#34D399', c2:'#06B6D4', a:'#0EA5A5', p:'#06B6D4'},
+  amber:   {c1:'#FBBF24', c2:'#FB7185', a:'#F59E0B', p:'#FB7185'},
+  rose:    {c1:'#FB7185', c2:'#C026D3', a:'#F43F5E', p:'#C026D3'},
+};
+function applyAccent(spec){
+  const r=document.documentElement.style;
+  if(spec && spec.custom){
+    const c=spec.custom;
+    r.setProperty('--accent', c); r.setProperty('--accent-coral', c); r.setProperty('--accent-pink', c);
+    r.setProperty('--accent-grad', `linear-gradient(120deg, color-mix(in srgb, ${c} 74%, #fff), ${c})`);
+    r.setProperty('--accent-grad-soft', `linear-gradient(120deg, color-mix(in srgb, ${c} 30%, transparent), color-mix(in srgb, ${c} 30%, transparent))`);
+    r.setProperty('--accent-glow', `0 0 40px -6px color-mix(in srgb, ${c} 60%, transparent)`);
+  } else {
+    const p=ACCENTS[(spec&&spec.preset)||'coral']||ACCENTS.coral;
+    r.setProperty('--accent', p.a); r.setProperty('--accent-coral', p.c1); r.setProperty('--accent-pink', p.p);
+    r.setProperty('--accent-grad', `linear-gradient(120deg, ${p.c1}, ${p.c2})`);
+    r.setProperty('--accent-grad-soft', `linear-gradient(120deg, color-mix(in srgb, ${p.c1} 30%, transparent), color-mix(in srgb, ${p.c2} 30%, transparent))`);
+    r.setProperty('--accent-glow', `0 0 40px -6px color-mix(in srgb, ${p.c2} 58%, transparent)`);
+  }
+}
+function setAccent(spec){
+  applyAccent(spec);
+  localStorage.setItem('accent', JSON.stringify(spec));
+}
+function loadAccent(){
+  try { const s=JSON.parse(localStorage.getItem('accent')||'null'); if(s) applyAccent(s); } catch(_){}
+}
+function toggleAccentMenu(e){
+  e && e.stopPropagation();
+  const m=document.getElementById('accentMenu');
+  if(!m.classList.contains('hidden')){ m.classList.add('hidden'); return; }
+  // 스와치 렌더
+  const box=document.getElementById('accentSwatches');
+  box.innerHTML=Object.keys(ACCENTS).map(k=>{
+    const p=ACCENTS[k];
+    return `<button title="${k}" onclick="setAccent({preset:'${k}'})" style="width:26px; height:26px; border-radius:9px; border:2px solid var(--rim-hair); cursor:pointer; background:linear-gradient(120deg,${p.c1},${p.c2});"></button>`;
+  }).join('');
+  // 위치: 버튼 아래
+  const btn=document.getElementById('accentBtn').getBoundingClientRect();
+  m.style.top=(btn.bottom+8)+'px';
+  m.style.right=Math.max(8,(window.innerWidth-btn.right-4))+'px';
+  m.classList.remove('hidden');
+}
+document.addEventListener('click', (e)=>{
+  const m=document.getElementById('accentMenu');
+  if(m && !m.classList.contains('hidden') && !m.contains(e.target) && e.target.closest('#accentBtn')===null){
+    m.classList.add('hidden');
+  }
+});
+loadAccent();
 
 /* ============ 페이지 전환 ============ */
 function showPage(id){
