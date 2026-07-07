@@ -627,8 +627,9 @@ def _looks_like_image(b: bytes) -> bool:
             or b[:2] == b"BM")                    # BMP
 
 
-async def _url_or_b64_to_image(u: str) -> GeneratedImage | None:
+async def _url_or_b64_to_image(u: str, auth_bearer: str = "", auth_host: str = "") -> GeneratedImage | None:
     """data URI / http(s) URL / 순수 base64 문자열을 GeneratedImage로 변환.
+    URL이 게이트웨이(auth_host)와 같은 호스트면 인증 헤더를 붙여 받는다(키 유출 방지 위해 동일 호스트에만).
     유효한 이미지 바이트가 아니면 None(→ 저장 안 함)."""
     if not u or not isinstance(u, str):
         return None
@@ -643,8 +644,12 @@ async def _url_or_b64_to_image(u: str) -> GeneratedImage | None:
             return None
     elif u.startswith(("http://", "https://")):
         try:
+            from urllib.parse import urlparse as _up
+            headers = {}
+            if auth_bearer and auth_host and (_up(u).hostname or "").lower() == auth_host.lower():
+                headers["Authorization"] = f"Bearer {auth_bearer}"
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-                r = await client.get(u)
+                r = await client.get(u, headers=headers)
                 r.raise_for_status()
                 data = r.content
                 ct = r.headers.get("content-type", "image/png")
@@ -702,10 +707,13 @@ def _collect_image_urls(data: dict) -> list[str]:
 async def _run_openai_chat_image(base_url: str, key: str, model_id: str, prompt: str) -> list[GeneratedImage]:
     """가비아 등 OpenAI 호환 게이트웨이의 '멀티모달 이미지 모델'을 chat/completions로 호출.
     이미지 전용 엔드포인트가 없고 이미지 모델이 채팅 응답으로 이미지를 돌려주는 경우에 사용."""
+    from urllib.parse import urlparse as _up
     url = f"{base_url.rstrip('/')}/chat/completions"
+    gw_host = (_up(url).hostname or "")
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     base_payload = {"model": model_id,
                     "messages": [{"role": "user", "content": prompt[:4000]}]}
+    last_data = None
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         # 1차: 순정 요청 → 이미지 없으면 2차로 modalities 지정 재시도
         images: list[GeneratedImage] = []
@@ -723,28 +731,28 @@ async def _run_openai_chat_image(base_url: str, key: str, model_id: str, prompt:
                 data = r.json()
             except Exception:
                 data = None
+            last_data = data
             candidates = _collect_image_urls(data) if isinstance(data, dict) else []
             # 폴백: 구조 파싱으로 못 찾으면 원문 전체에서 data URI 스캔
             if not candidates:
                 import re
                 candidates = re.findall(r"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+", r.text)
             for u in candidates:
-                img = await _url_or_b64_to_image(u)
+                img = await _url_or_b64_to_image(u, auth_bearer=key, auth_host=gw_host)
                 if img and img.data:
                     images.append(img)
             if images:
                 return images
-            # 진단: 이미지를 못 뽑았을 때 응답 구조를 로그로 남김(값/base64는 요약)
             _log_image_shape(model_id, data, r.text)
+    # 실패: 응답 구조 요약을 에러 메시지에 담아 형식 진단을 돕는다(base64/값 제외)
+    hint = _image_shape_str(last_data)
     raise HTTPException(status_code=502,
-                        detail="이미지 응답을 받지 못했습니다. 이미지 지원 모델(예: gemini-2.5-flash-image)인지, "
-                               "응답 형식이 예상과 다른지 서버 로그를 확인하세요.")
+                        detail="이미지 응답에서 이미지를 찾지 못했습니다. 이미지 지원 모델인지 확인하세요. "
+                               f"[응답구조: {hint}]")
 
 
-def _log_image_shape(model_id: str, data, raw_text: str):
-    """이미지 추출 실패 시 응답의 '구조'만 로그로 남긴다(거대한 base64는 제외)."""
-    import logging
-    log = logging.getLogger("uvicorn.error")
+def _image_shape_str(data) -> str:
+    """응답의 '구조'만 문자열로(거대한 base64/값은 요약). 이미지 형식 진단용."""
     try:
         def shape(v, depth=0):
             if depth > 4:
@@ -756,7 +764,19 @@ def _log_image_shape(model_id: str, data, raw_text: str):
             if isinstance(v, str):
                 return f"<str len={len(v)}{' data-uri' if v.startswith('data:') else ''}>" if len(v) > 80 else v
             return v
-        log.warning("[image-shape] model=%s structure=%s", model_id, shape(data) if data else raw_text[:800])
+        import json as _json
+        return _json.dumps(shape(data), ensure_ascii=False)[:600] if data else "(빈 응답)"
+    except Exception:
+        return "(구조 파악 실패)"
+
+
+def _log_image_shape(model_id: str, data, raw_text: str):
+    """이미지 추출 실패 시 응답 구조를 로그로 남긴다."""
+    import logging
+    try:
+        logging.getLogger("uvicorn.error").warning(
+            "[image-shape] model=%s structure=%s", model_id,
+            _image_shape_str(data) if data else raw_text[:600])
     except Exception:
         pass
 

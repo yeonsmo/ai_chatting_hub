@@ -873,11 +873,19 @@ applyTheme(localStorage.getItem('theme') || 'dark');
 /* ============ 테마 색상 개인화 ============ */
 const ACCENTS = {
   coral:   {c1:'#FF8A5B', c2:'#FF5BA0', a:'#FF7A4D', p:'#FF4F9A'},
-  ocean:   {c1:'#38BDF8', c2:'#6366F1', a:'#3B82F6', p:'#6366F1'},
-  violet:  {c1:'#A78BFA', c2:'#EC4899', a:'#8B5CF6', p:'#D946EF'},
-  emerald: {c1:'#34D399', c2:'#06B6D4', a:'#0EA5A5', p:'#06B6D4'},
+  sunset:  {c1:'#FF9966', c2:'#FF5E62', a:'#FF7847', p:'#FF5E62'},
   amber:   {c1:'#FBBF24', c2:'#FB7185', a:'#F59E0B', p:'#FB7185'},
   rose:    {c1:'#FB7185', c2:'#C026D3', a:'#F43F5E', p:'#C026D3'},
+  magenta: {c1:'#F472B6', c2:'#8B5CF6', a:'#EC4899', p:'#A855F7'},
+  violet:  {c1:'#A78BFA', c2:'#EC4899', a:'#8B5CF6', p:'#D946EF'},
+  indigo:  {c1:'#818CF8', c2:'#6366F1', a:'#6366F1', p:'#818CF8'},
+  ocean:   {c1:'#38BDF8', c2:'#6366F1', a:'#3B82F6', p:'#6366F1'},
+  sky:     {c1:'#22D3EE', c2:'#3B82F6', a:'#0EA5E9', p:'#3B82F6'},
+  teal:    {c1:'#2DD4BF', c2:'#0EA5E9', a:'#14B8A6', p:'#0EA5E9'},
+  emerald: {c1:'#34D399', c2:'#06B6D4', a:'#0EA5A5', p:'#06B6D4'},
+  lime:    {c1:'#A3E635', c2:'#22C55E', a:'#65A30D', p:'#22C55E'},
+  gold:    {c1:'#FCD34D', c2:'#F59E0B', a:'#EAB308', p:'#F59E0B'},
+  slate:   {c1:'#94A3B8', c2:'#64748B', a:'#64748B', p:'#94A3B8'},
 };
 function applyAccent(spec){
   const r=document.documentElement.style;
@@ -2145,7 +2153,24 @@ async function loadIntegTab(){
       <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">외부 연동 (${integs.length})</div>
       <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="document.getElementById('integFormBox').classList.toggle('hidden')">+ 연동 추가</button>
     </div>
-    <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-3); margin-bottom:12px;">하이웍스·구글 등 사내 시스템의 API 주소와 인증 키를 등록하면, 아래 스킬이 이 연동을 통해 호출됩니다.</div>
+    <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-3); margin-bottom:8px;">하이웍스·구글 등 사내 시스템의 API 주소와 인증 키를 등록하면, 아래 스킬이 이 연동을 통해 호출됩니다.</div>
+    <details style="margin-bottom:12px; border:1px solid var(--rim-hair); border-radius:12px; background:var(--fill-1); overflow:hidden;">
+      <summary style="cursor:pointer; padding:10px 14px; font:600 11.5px/1 var(--font-sans); color:var(--accent); list-style:none;">📖 연동·스킬 등록 방법 (예: 재고 조회)</summary>
+      <div style="padding:2px 16px 14px; font:400 11.5px/1.75 var(--font-sans); color:var(--fg-2);">
+        <b style="color:var(--fg-1);">1단계 · 연동 추가</b> — 부를 시스템의 API 기본주소와 인증키를 등록합니다.
+        <div style="margin:5px 0 10px; padding:9px 11px; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:9px; font:400 11px/1.7 var(--font-mono); color:var(--fg-2);">
+          이름: 재고관리<br>종류: 기타/사내 API<br>Base URL: <b style="color:var(--fg-1);">https://inventory.hpengineeringwork.com/api</b><br>인증: Bearer 토큰 · 키: (재고앱에서 발급한 API 토큰)
+        </div>
+        <b style="color:var(--fg-1);">2단계 · 스킬 추가</b> — AI가 대화 중 부를 "도구" 하나를 정의합니다.
+        <div style="margin:5px 0 10px; padding:9px 11px; background:var(--fill-1); border:1px solid var(--rim-hair); border-radius:9px; font:400 11px/1.7 var(--font-mono); color:var(--fg-2);">
+          도구이름: <b style="color:var(--fg-1);">search_inventory</b> (영문·숫자·_)<br>표시이름: 재고 조회<br>설명: 품목명으로 재고 수량을 조회한다 ← <span style="color:var(--fg-3);">AI가 이 설명을 보고 언제 부를지 판단</span><br>메서드: GET · 경로: <b style="color:var(--fg-1);">/items?q={query}</b><br>파라미터: query (string, 필수)<br>최소 역할: 담당자 ← <span style="color:var(--fg-3);">이 등급 이상만 사용</span>
+        </div>
+        <b style="color:var(--fg-1);">3단계 · 사용</b> — 대화창에 <span style="color:var(--fg-1);">"스트레이너 재고 몇 개야?"</span> 라고 물으면 AI가 자동으로 이 스킬을 호출해 답합니다.
+        <div style="margin-top:10px; padding:9px 11px; background:rgba(251,191,36,0.10); border:1px solid rgba(251,191,36,0.28); border-radius:9px; color:var(--fg-2);">
+          ⚠ <b style="color:var(--fg-1);">권한/조회 오류가 나면</b> 대개 <b style="color:var(--fg-1);">등록한 API 키의 권한 문제</b>입니다. 그 시스템(예: 재고앱)에서 <u>조회 권한이 있는 계정의 API 키</u>를 발급받아 등록하세요. 우리 허브는 그 API를 "호출"만 하며, 권한은 대상 시스템이 판단합니다.
+        </div>
+      </div>
+    </details>
     <div id="integFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
         <input id="iName" class="field" placeholder="이름 (예: 하이웍스)">
