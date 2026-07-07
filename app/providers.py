@@ -616,30 +616,50 @@ async def _run_gemini_image(model_id: str, key: str, prompt: str) -> list[Genera
     return out
 
 
+def _looks_like_image(b: bytes) -> bool:
+    """이미지 매직바이트 확인 — 깨진/비이미지 바이트를 저장하지 않기 위함."""
+    if not b or len(b) < 12:
+        return False
+    return (b[:8] == b"\x89PNG\r\n\x1a\n"       # PNG
+            or b[:3] == b"\xff\xd8\xff"          # JPEG
+            or b[:6] in (b"GIF87a", b"GIF89a")   # GIF
+            or (b[:4] == b"RIFF" and b[8:12] == b"WEBP")  # WEBP
+            or b[:2] == b"BM")                    # BMP
+
+
 async def _url_or_b64_to_image(u: str) -> GeneratedImage | None:
-    """data URI / http(s) URL / 순수 base64 문자열을 GeneratedImage로 변환."""
+    """data URI / http(s) URL / 순수 base64 문자열을 GeneratedImage로 변환.
+    유효한 이미지 바이트가 아니면 None(→ 저장 안 함)."""
     if not u or not isinstance(u, str):
         return None
+    ct = "image/png"
+    data = None
     if u.startswith("data:"):
         try:
             header, b64 = u.split(",", 1)
             ct = header[5:].split(";")[0] or "image/png"
-            return GeneratedImage(base64.standard_b64decode(b64), ct or "image/png")
+            data = base64.b64decode("".join(b64.split()))  # 줄바꿈/공백 제거 후 디코드
         except Exception:
             return None
-    if u.startswith(("http://", "https://")):
+    elif u.startswith(("http://", "https://")):
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
                 r = await client.get(u)
                 r.raise_for_status()
-                return GeneratedImage(r.content, r.headers.get("content-type", "image/png"))
+                data = r.content
+                ct = r.headers.get("content-type", "image/png")
         except Exception:
             return None
-    # 순수 base64로 추정
-    try:
-        return GeneratedImage(base64.standard_b64decode(u))
-    except Exception:
+    else:
+        try:
+            data = base64.b64decode("".join(u.split()))
+        except Exception:
+            return None
+    if not _looks_like_image(data):
         return None
+    if not ct.startswith("image/"):
+        ct = "image/png"
+    return GeneratedImage(data, ct)
 
 
 def _collect_image_urls(data: dict) -> list[str]:
@@ -675,7 +695,7 @@ def _collect_image_urls(data: dict) -> list[str]:
         # 3) content가 문자열이면 data URI 임베드 추출
         elif isinstance(content, str):
             import re
-            urls += re.findall(r"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+", content)
+            urls += re.findall(r"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+", content)
     return [u for u in urls if u]
 
 
@@ -702,15 +722,43 @@ async def _run_openai_chat_image(base_url: str, key: str, model_id: str, prompt:
             try:
                 data = r.json()
             except Exception:
-                continue
-            for u in _collect_image_urls(data):
+                data = None
+            candidates = _collect_image_urls(data) if isinstance(data, dict) else []
+            # 폴백: 구조 파싱으로 못 찾으면 원문 전체에서 data URI 스캔
+            if not candidates:
+                import re
+                candidates = re.findall(r"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+", r.text)
+            for u in candidates:
                 img = await _url_or_b64_to_image(u)
                 if img and img.data:
                     images.append(img)
             if images:
                 return images
+            # 진단: 이미지를 못 뽑았을 때 응답 구조를 로그로 남김(값/base64는 요약)
+            _log_image_shape(model_id, data, r.text)
     raise HTTPException(status_code=502,
-                        detail="이미지 응답을 받지 못했습니다. 이미지 지원 모델(예: gemini-2.5-flash-image)인지 확인하세요.")
+                        detail="이미지 응답을 받지 못했습니다. 이미지 지원 모델(예: gemini-2.5-flash-image)인지, "
+                               "응답 형식이 예상과 다른지 서버 로그를 확인하세요.")
+
+
+def _log_image_shape(model_id: str, data, raw_text: str):
+    """이미지 추출 실패 시 응답의 '구조'만 로그로 남긴다(거대한 base64는 제외)."""
+    import logging
+    log = logging.getLogger("uvicorn.error")
+    try:
+        def shape(v, depth=0):
+            if depth > 4:
+                return "…"
+            if isinstance(v, dict):
+                return {k: shape(vv, depth + 1) for k, vv in list(v.items())[:20]}
+            if isinstance(v, list):
+                return [shape(v[0], depth + 1), f"…(len={len(v)})"] if v else []
+            if isinstance(v, str):
+                return f"<str len={len(v)}{' data-uri' if v.startswith('data:') else ''}>" if len(v) > 80 else v
+            return v
+        log.warning("[image-shape] model=%s structure=%s", model_id, shape(data) if data else raw_text[:800])
+    except Exception:
+        pass
 
 
 async def run_image(db: AsyncSession, provider: str, model_id: str, prompt: str,
