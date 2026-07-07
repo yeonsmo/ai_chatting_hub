@@ -616,6 +616,103 @@ async def _run_gemini_image(model_id: str, key: str, prompt: str) -> list[Genera
     return out
 
 
+async def _url_or_b64_to_image(u: str) -> GeneratedImage | None:
+    """data URI / http(s) URL / 순수 base64 문자열을 GeneratedImage로 변환."""
+    if not u or not isinstance(u, str):
+        return None
+    if u.startswith("data:"):
+        try:
+            header, b64 = u.split(",", 1)
+            ct = header[5:].split(";")[0] or "image/png"
+            return GeneratedImage(base64.standard_b64decode(b64), ct or "image/png")
+        except Exception:
+            return None
+    if u.startswith(("http://", "https://")):
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                r = await client.get(u)
+                r.raise_for_status()
+                return GeneratedImage(r.content, r.headers.get("content-type", "image/png"))
+        except Exception:
+            return None
+    # 순수 base64로 추정
+    try:
+        return GeneratedImage(base64.standard_b64decode(u))
+    except Exception:
+        return None
+
+
+def _collect_image_urls(data: dict) -> list[str]:
+    """chat/completions 응답에서 이미지 위치를 관대하게 수집(게이트웨이별 형식 차이 대응)."""
+    urls: list[str] = []
+
+    def _push(v):
+        if isinstance(v, str):
+            urls.append(v)
+        elif isinstance(v, dict):
+            urls.append(v.get("url") or v.get("b64_json") or v.get("data") or "")
+
+    for ch in (data.get("choices") or []):
+        msg = ch.get("message") or ch.get("delta") or {}
+        # 1) message.images: [{image_url:{url}}] / [{url}] / ["data:..."]
+        for im in (msg.get("images") or []):
+            if isinstance(im, dict) and isinstance(im.get("image_url"), (dict, str)):
+                _push(im["image_url"])
+            else:
+                _push(im)
+        # 2) content가 파트 배열이면 image 파트 추출
+        content = msg.get("content")
+        if isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") in ("image_url", "output_image", "image", "input_image"):
+                    _push(part.get("image_url") or part.get("image") or part.get("url") or part.get("data") or part)
+                inline = part.get("inlineData") or part.get("inline_data")
+                if inline and inline.get("data"):
+                    mt = inline.get("mimeType") or inline.get("mime_type") or "image/png"
+                    urls.append(f"data:{mt};base64,{inline['data']}")
+        # 3) content가 문자열이면 data URI 임베드 추출
+        elif isinstance(content, str):
+            import re
+            urls += re.findall(r"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+", content)
+    return [u for u in urls if u]
+
+
+async def _run_openai_chat_image(base_url: str, key: str, model_id: str, prompt: str) -> list[GeneratedImage]:
+    """가비아 등 OpenAI 호환 게이트웨이의 '멀티모달 이미지 모델'을 chat/completions로 호출.
+    이미지 전용 엔드포인트가 없고 이미지 모델이 채팅 응답으로 이미지를 돌려주는 경우에 사용."""
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    base_payload = {"model": model_id,
+                    "messages": [{"role": "user", "content": prompt[:4000]}]}
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        # 1차: 순정 요청 → 이미지 없으면 2차로 modalities 지정 재시도
+        images: list[GeneratedImage] = []
+        for attempt in (base_payload, {**base_payload, "modalities": ["image", "text"]}):
+            r = await client.post(url, headers=headers, json=attempt)
+            if r.status_code in (404, 405):
+                raise HTTPException(status_code=502,
+                                    detail="이 프로바이더는 이미지 생성을 지원하지 않습니다.")
+            if r.status_code >= 400:
+                # modalities 미지원으로 400이면 다음 시도로
+                if attempt is base_payload and "modalities" not in r.text.lower():
+                    continue
+                r.raise_for_status()
+            try:
+                data = r.json()
+            except Exception:
+                continue
+            for u in _collect_image_urls(data):
+                img = await _url_or_b64_to_image(u)
+                if img and img.data:
+                    images.append(img)
+            if images:
+                return images
+    raise HTTPException(status_code=502,
+                        detail="이미지 응답을 받지 못했습니다. 이미지 지원 모델(예: gemini-2.5-flash-image)인지 확인하세요.")
+
+
 async def run_image(db: AsyncSession, provider: str, model_id: str, prompt: str,
                     size: str = "1024x1024") -> list[GeneratedImage]:
     if provider not in IMAGE_PROVIDERS:
@@ -623,6 +720,10 @@ async def run_image(db: AsyncSession, provider: str, model_id: str, prompt: str,
     key, extra = await resolve_credentials(db, provider)
     if provider == "gemini":
         images = await _run_gemini_image(model_id, key, prompt)
+    elif provider == "gabia":
+        # 가비아 AI Hub는 이미지 전용 엔드포인트가 없고, 이미지 모델이 멀티모달 채팅 모델 →
+        # chat/completions로 호출해 응답에서 이미지를 추출한다.
+        images = await _run_openai_chat_image(f"{settings.ai_hub_base_url}/v1", key, model_id, prompt)
     else:
         images = await _run_openai_image(provider, model_id, key, extra, prompt, size)
     for img in images:
