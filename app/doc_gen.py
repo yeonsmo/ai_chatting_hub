@@ -1,11 +1,15 @@
 """문서 생성기 — AI가 도구로 호출하면 구조화 입력을 받아 docx/pdf/xlsx 바이트를 만든다.
 
 - 순수 pip 의존성만 사용(system 라이브러리 불필요): python-docx / reportlab / openpyxl
-- PDF 한글은 reportlab 내장 CID 폰트(HYSMyeongJo-Medium) 사용 → 폰트 파일 번들 불필요
+- PDF 한글은 번들된 Pretendard TTF를 임베딩(뷰어에 폰트 없어도 안 깨짐).
+  폰트 파일이 없으면 reportlab 내장 CID 폰트(HYSMyeongJo-Medium)로 폴백.
 - 입력 마크다운은 최소 문법만 해석(# 제목, - / * 불릿, 1. 번호, 나머지는 문단)
 """
 import io
+import os
 import re
+
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "assets", "fonts")
 
 DOCX_CT = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 XLSX_CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -47,11 +51,27 @@ def parse_blocks(markdown: str):
 
 # ---------------- DOCX ----------------
 
+def _set_docx_korean_font(doc, name: str = "맑은 고딕"):
+    """Normal 스타일에 한글(East Asian) 폰트를 명시해 뷰어별 대체 실패로 인한 깨짐을 방지."""
+    from docx.oxml.ns import qn
+    style = doc.styles["Normal"]
+    style.font.name = name
+    rpr = style.element.get_or_add_rPr()
+    rfonts = rpr.find(qn("w:rFonts"))
+    if rfonts is None:
+        rfonts = rpr.makeelement(qn("w:rFonts"), {})
+        rpr.append(rfonts)
+    rfonts.set(qn("w:eastAsia"), name)
+    rfonts.set(qn("w:ascii"), name)
+    rfonts.set(qn("w:hAnsi"), name)
+
+
 def render_docx(title: str, markdown: str) -> bytes:
     from docx import Document
     from docx.shared import Pt
 
     doc = Document()
+    _set_docx_korean_font(doc)
     if title:
         doc.add_heading(title, level=0)
     for kind, text, level in parse_blocks(markdown):
@@ -70,18 +90,32 @@ def render_docx(title: str, markdown: str) -> bytes:
 
 # ---------------- PDF ----------------
 
-_PDF_FONT_REGISTERED = False
+_PDF_FONTS = {}
 
 
 def _ensure_pdf_font():
-    global _PDF_FONT_REGISTERED
-    if _PDF_FONT_REGISTERED:
-        return "HYSMyeongJo-Medium"
+    """한글 TTF(Pretendard)를 PDF에 임베딩해 어떤 뷰어에서도 깨지지 않게 한다.
+    폰트 파일이 없으면 내장 CID 폰트로 폴백."""
+    global _PDF_FONTS
+    if _PDF_FONTS:
+        return _PDF_FONTS
     from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-    pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
-    _PDF_FONT_REGISTERED = True
-    return "HYSMyeongJo-Medium"
+    reg = os.path.join(_FONT_DIR, "Pretendard-Regular.ttf")
+    bold = os.path.join(_FONT_DIR, "Pretendard-Bold.ttf")
+    try:
+        if not os.path.isfile(reg):
+            raise FileNotFoundError(reg)
+        from reportlab.pdfbase.ttfonts import TTFont
+        pdfmetrics.registerFont(TTFont("KR", reg))
+        pdfmetrics.registerFont(TTFont("KR-Bold", bold if os.path.isfile(bold) else reg))
+        pdfmetrics.registerFontFamily("KR", normal="KR", bold="KR-Bold",
+                                      italic="KR", boldItalic="KR-Bold")
+        _PDF_FONTS = {"regular": "KR", "bold": "KR-Bold"}
+    except Exception:
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
+        _PDF_FONTS = {"regular": "HYSMyeongJo-Medium", "bold": "HYSMyeongJo-Medium"}
+    return _PDF_FONTS
 
 
 def render_pdf(title: str, markdown: str) -> bytes:
@@ -91,12 +125,12 @@ def render_pdf(title: str, markdown: str) -> bytes:
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
     from xml.sax.saxutils import escape
 
-    font = _ensure_pdf_font()
+    fonts = _ensure_pdf_font()
     styles = getSampleStyleSheet()
-    body = ParagraphStyle("body_kr", parent=styles["Normal"], fontName=font, fontSize=11, leading=17)
-    h = [ParagraphStyle(f"h{i}_kr", parent=styles["Heading%d" % i], fontName=font,
+    body = ParagraphStyle("body_kr", parent=styles["Normal"], fontName=fonts["regular"], fontSize=11, leading=17)
+    h = [ParagraphStyle(f"h{i}_kr", parent=styles["Heading%d" % i], fontName=fonts["bold"],
                         spaceBefore=10, spaceAfter=4) for i in (1, 2, 3)]
-    title_style = ParagraphStyle("title_kr", parent=styles["Title"], fontName=font)
+    title_style = ParagraphStyle("title_kr", parent=styles["Title"], fontName=fonts["bold"])
 
     buf = io.BytesIO()
     docp = SimpleDocTemplate(buf, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm,
