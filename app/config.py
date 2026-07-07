@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     upload_dir: str = "data/uploads"
     max_upload_mb: int = 50
 
+    # 스킬/연동 SSRF 예외: 신뢰하는 사내 호스트만 사설 대역이어도 허용.
+    # 콤마 구분. 와일드카드(*.example.com) / 정확한 호스트 / CIDR(192.168.0.0/24) 지원.
+    # 기본값은 사내 도메인만. 비우면 모든 사설 대역 차단(가장 안전).
+    skill_internal_allowed_hosts: str = "*.hpengineeringwork.com"
+
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"

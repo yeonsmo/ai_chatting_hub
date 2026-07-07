@@ -11,6 +11,7 @@ import socket
 from urllib.parse import urlparse, quote
 
 import httpx
+from app.config import settings
 from app.models import Integration, Skill
 
 RESULT_MAX_CHARS = 20_000
@@ -105,10 +106,43 @@ def _render_json_body(template: str, params: dict) -> str:
     return json.dumps(rendered, ensure_ascii=False)
 
 
+def _parse_internal_allowlist():
+    """설정 문자열을 (호스트패턴 리스트, CIDR 네트워크 리스트)로 파싱."""
+    host_pats: list[str] = []
+    nets: list = []
+    for raw in (settings.skill_internal_allowed_hosts or "").split(","):
+        item = raw.strip().lower()
+        if not item:
+            continue
+        if "/" in item:
+            try:
+                nets.append(ipaddress.ip_network(item, strict=False))
+            except ValueError:
+                pass
+        else:
+            host_pats.append(item)
+    return host_pats, nets
+
+
+def _host_matches_patterns(host: str, patterns: list[str]) -> bool:
+    h = (host or "").lower().rstrip(".")
+    for pat in patterns:
+        if pat.startswith("*."):
+            base = pat[2:]                    # "hpengineeringwork.com"
+            if h == base or h.endswith("." + base):
+                return True
+        elif h == pat:
+            return True
+    return False
+
+
 def _validate_public_host(host: str):
-    """호스트를 해석해 loopback/사설/링크로컬/예약 대역이면 차단하고, 안전한 IP 목록을 반환."""
+    """호스트를 해석해 loopback/사설/링크로컬/예약 대역이면 차단하고, 안전한 IP 목록을 반환.
+    단, 관리자가 지정한 사내 허용목록(도메인/CIDR)에 해당하면 사설 대역이어도 허용한다."""
     if not host:
         raise ValueError("호스트가 비어 있습니다")
+    host_pats, allow_nets = _parse_internal_allowlist()
+    host_allowed = _host_matches_patterns(host, host_pats)
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
@@ -116,11 +150,14 @@ def _validate_public_host(host: str):
     ips = []
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+        v4 = ip.ipv4_mapped if (ip.version == 6 and ip.ipv4_mapped) else None
+        ip_allowed = host_allowed or any(ip in n for n in allow_nets) \
+            or (v4 is not None and any(v4 in n for n in allow_nets))
+        if not ip_allowed and (
+                ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
                 or ip.is_multicast or ip.is_unspecified
-                or (ip.version == 6 and ip.ipv4_mapped and (
-                    ip.ipv4_mapped.is_private or ip.ipv4_mapped.is_loopback
-                    or ip.ipv4_mapped.is_link_local))):
+                or (v4 is not None and (
+                    v4.is_private or v4.is_loopback or v4.is_link_local))):
             raise ValueError("내부/사설 대역 대상은 호출할 수 없습니다")
         ips.append(str(ip))
     if not ips:
