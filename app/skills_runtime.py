@@ -136,6 +136,25 @@ def _host_matches_patterns(host: str, patterns: list[str]) -> bool:
     return False
 
 
+import time as _time
+_DNS_CACHE: dict = {}      # host -> (expiry_monotonic, infos)
+_DNS_TTL = 300.0           # 초
+
+
+def _resolve_cached(host: str):
+    """getaddrinfo 결과를 TTL 캐시(반복 스킬 호출 시 매번 DNS 해석하지 않도록)."""
+    now = _time.monotonic()
+    hit = _DNS_CACHE.get(host)
+    if hit and hit[0] > now:
+        return hit[1]
+    infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    _DNS_CACHE[host] = (now + _DNS_TTL, infos)
+    if len(_DNS_CACHE) > 512:                # 무한 증가 방지
+        for k in [k for k, v in _DNS_CACHE.items() if v[0] <= now]:
+            _DNS_CACHE.pop(k, None)
+    return infos
+
+
 def _validate_public_host(host: str):
     """호스트를 해석해 loopback/사설/링크로컬/예약 대역이면 차단하고, 안전한 IP 목록을 반환.
     단, 관리자가 지정한 사내 허용목록(도메인/CIDR)에 해당하면 사설 대역이어도 허용한다."""
@@ -144,7 +163,7 @@ def _validate_public_host(host: str):
     host_pats, allow_nets = _parse_internal_allowlist()
     host_allowed = _host_matches_patterns(host, host_pats)
     try:
-        infos = socket.getaddrinfo(host, None)
+        infos = _resolve_cached(host)
     except socket.gaierror:
         raise ValueError("호스트를 해석할 수 없습니다")
     ips = []
