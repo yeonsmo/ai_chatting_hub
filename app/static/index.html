@@ -1355,6 +1355,16 @@ function hydrateImages(container){
   });
 }
 
+function aiAvatarSrc(mk){
+  const m=MODELS[mk]||{};
+  const s=((m.label||'')+' '+(mk||'')).toLowerCase();
+  if(s.includes('claude')) return '/static/assets/ai-claude.png';
+  if(s.includes('gemini')) return '/static/assets/ai-gemini.png';
+  return '/static/assets/ai-claude.png';   // 기본(추후 모델별 아이콘 추가 가능)
+}
+function aiAvatarHTML(mk){
+  return `<img src="${aiAvatarSrc(mk)}" alt="AI" style="width:36px; height:36px; flex:0 0 36px; border-radius:50%; object-fit:cover; box-shadow:0 7px 16px -7px rgba(0,0,0,0.35);">`;
+}
 function addMsg(role, content, meta){
   const area=document.getElementById('msgArea');
   document.getElementById('welcomeBox')?.remove();
@@ -1378,9 +1388,7 @@ function addMsg(role, content, meta){
         🔧 ${esc(s.title)}${s.status!=='success'?' (실패)':''}</span>`).join('')}
     </div>`:'';
     d.innerHTML=`<div style="display:flex; gap:14px;">
-      <div style="width:36px; height:36px; flex:0 0 36px; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; box-shadow:0 7px 16px -7px ${color};">
-        <span style="width:12px; height:12px; border-radius:4px; background:rgba(255,255,255,0.94); transform:rotate(45deg);"></span>
-      </div>
+      ${aiAvatarHTML(mk)}
       <div style="flex:1; min-width:0;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;">
           <span style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">${esc(modelLabel(mk))}</span>
@@ -1408,9 +1416,7 @@ function addTyping(id){
   d.id=id; d.className='msg-fade';
   const color=modelColor(currentModel);
   d.innerHTML=`<div style="display:flex; gap:14px;">
-    <div style="width:36px; height:36px; flex:0 0 36px; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center;">
-      <span style="width:12px; height:12px; border-radius:4px; background:rgba(255,255,255,0.94); transform:rotate(45deg);"></span>
-    </div>
+    ${aiAvatarHTML(currentModel)}
     <div style="display:flex; align-items:center; gap:5px; padding:12px 0;"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
   </div>`;
   area.appendChild(d);
@@ -1433,9 +1439,7 @@ function addStreamBubble(id){
   const d=document.createElement('div'); d.id=id; d.className='msg-fade';
   const color=modelColor(currentModel);
   d.innerHTML=`<div style="display:flex; gap:14px;">
-    <div style="width:36px; height:36px; flex:0 0 36px; border-radius:50%; background:${color}; display:flex; align-items:center; justify-content:center; box-shadow:0 7px 16px -7px ${color};">
-      <span style="width:12px; height:12px; border-radius:4px; background:rgba(255,255,255,0.94); transform:rotate(45deg);"></span>
-    </div>
+    ${aiAvatarHTML(currentModel)}
     <div style="flex:1; min-width:0;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;">
         <span style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">${esc(modelLabel(currentModel))}</span>
