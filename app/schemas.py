@@ -294,6 +294,8 @@ class UsageLogResponse(BaseModel):
     detail: Optional[str]
     duration_ms: Optional[int]
     client_ip: Optional[str]
+    request_params: Optional[str] = None
+    response_preview: Optional[str] = None
     created_at: datetime
 
     class Config:

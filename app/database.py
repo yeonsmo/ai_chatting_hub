@@ -30,6 +30,9 @@ MIGRATION_STATEMENTS = [
     "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'upload'",
     'ALTER TABLE attachments ADD COLUMN IF NOT EXISTS origin VARCHAR(80)',
     "ALTER TABLE model_routes ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'chat'",
+    # v5: 스킬 감사 로그 — 외부 API로 무엇을 요청/수신했는지 최고관리자가 열람
+    'ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS request_params TEXT',
+    'ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS response_preview TEXT',
 ]
 
 

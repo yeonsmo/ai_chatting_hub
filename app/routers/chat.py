@@ -359,11 +359,18 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
         if not skill:
             raise ValueError(f"허용되지 않은 도구: {name}")
         t0 = time.monotonic()
+        # 감사: AI가 보낸 요청 파라미터 기록(자격증명/헤더는 별도이며 저장하지 않음)
+        try:
+            req_str = json.dumps(params, ensure_ascii=False)[:4000]
+        except (TypeError, ValueError):
+            req_str = str(params)[:4000]
         log = UsageLog(user_id=current_user.id, username=current_user.username,
                        action="skill", conversation_id=conversation.id,
-                       model=skill.name, provider=skill.integration.name, client_ip=ip)
+                       model=skill.name, provider=skill.integration.name, client_ip=ip,
+                       request_params=req_str)
         try:
             result = await execute_skill(skill, skill.integration, params)
+            log.response_preview = (result or "")[:8000]  # 외부에서 받은 데이터(요약 보관)
             log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
             return result
         except Exception as e:

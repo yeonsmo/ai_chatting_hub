@@ -2424,6 +2424,7 @@ async function loadLogsTab(){
       <select id="lgAction" class="field" style="width:auto; padding:8px 11px; font-size:12px;" onchange="fetchLogs(true)">
         <option value="">전체 행동</option>
         <option value="chat">채팅</option>
+        <option value="skill">스킬(외부 API)</option>
         <option value="login">로그인</option>
         <option value="login_failed">로그인 실패</option>
       </select>
@@ -2455,23 +2456,46 @@ async function fetchLogs(reset){
   try {
     const logs=await api('GET',`/admin/logs?limit=100&offset=${logOffset}${uid?'&user_id='+uid:''}${act?'&action='+act:''}${days?'&days='+days:''}`);
     logOffset+=logs.length;
-    const actLabel={chat:'채팅',login:'로그인',login_failed:'로그인 실패'};
-    rows.insertAdjacentHTML('beforeend', logs.map(l=>`
-      <tr>
-        <td style="white-space:nowrap;">${fmtDate(l.created_at)}</td>
+    const actLabel={chat:'채팅',skill:'스킬',login:'로그인',login_failed:'로그인 실패'};
+    rows.insertAdjacentHTML('beforeend', logs.map(l=>{
+      const isSkill=l.action==='skill';
+      const hasDetail=isSkill && (l.request_params||l.response_preview);
+      const modelCell = isSkill
+        ? `<span title="연동: ${esc(l.provider||'')}">🔌 ${esc(l.model||'')}${l.provider?' <span style="color:var(--fg-3);">· '+esc(l.provider)+'</span>':''}</span>`
+        : (l.model?esc(modelLabel(l.model)):'-');
+      const mainRow=`
+      <tr ${hasDetail?`onclick="toggleLogDetail(${l.id})" style="cursor:pointer;"`:''}>
+        <td style="white-space:nowrap;">${hasDetail?'<span style="color:var(--fg-3);">▸</span> ':''}${fmtDate(l.created_at)}</td>
         <td style="font-weight:600;">${esc(l.username)}</td>
         <td>${actLabel[l.action]||esc(l.action)}</td>
-        <td>${l.model?esc(modelLabel(l.model)):'-'}</td>
-        <td>${l.input_tokens!=null?l.input_tokens+' / '+(l.output_tokens||0):'-'}</td>
+        <td>${modelCell}</td>
+        <td>${l.input_tokens!=null?l.input_tokens+' / '+(l.output_tokens||0):(isSkill?'—':'-')}</td>
         <td>${l.duration_ms!=null?(l.duration_ms/1000).toFixed(1)+'s':'-'}</td>
         <td style="font-family:'JetBrains Mono',monospace; font-size:11px;">${esc(l.client_ip||'-')}</td>
         <td>${l.status==='success'
             ?'<span class="chip" style="background:rgba(16,185,129,0.12); color:#6ee7b7;">성공</span>'
             :`<span class="chip" style="background:rgba(239,68,68,0.12); color:#fca5a5;" title="${esc(l.detail||'')}">실패</span>`}</td>
-      </tr>`).join(''));
+      </tr>`;
+      if(!hasDetail) return mainRow;
+      return mainRow + `
+      <tr id="ld-${l.id}" class="hidden"><td colspan="8" style="background:var(--fill-1); padding:12px 14px;">
+        <div style="font:600 10.5px/1 var(--font-sans); color:var(--fg-3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">요청 파라미터 (AI가 보낸 값)</div>
+        <pre style="margin:0 0 12px; padding:9px 11px; background:var(--fill-2); border-radius:8px; font:400 11.5px/1.5 'JetBrains Mono',monospace; color:var(--fg-1); white-space:pre-wrap; word-break:break-word; max-height:180px; overflow:auto;">${esc(prettyJson(l.request_params))||'<span style="color:var(--fg-3);">(없음)</span>'}</pre>
+        <div style="font:600 10.5px/1 var(--font-sans); color:var(--fg-3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">받은 응답 (외부 API 반환 데이터 · 최대 8000자)</div>
+        <pre style="margin:0; padding:9px 11px; background:var(--fill-2); border-radius:8px; font:400 11.5px/1.5 'JetBrains Mono',monospace; color:var(--fg-1); white-space:pre-wrap; word-break:break-word; max-height:300px; overflow:auto;">${esc(prettyJson(l.response_preview))||'<span style="color:var(--fg-3);">(없음)</span>'}</pre>
+      </td></tr>`;
+    }).join(''));
     document.getElementById('moreLogsBtn').style.display = logs.length<100 ? 'none' : '';
     if(reset && !logs.length) rows.innerHTML='<tr><td colspan="8" style="text-align:center; color:var(--fg-3); padding:18px;">로그가 없습니다</td></tr>';
   } catch(e){ toast(e.message,true); }
+}
+function toggleLogDetail(id){
+  const el=document.getElementById('ld-'+id);
+  if(el) el.classList.toggle('hidden');
+}
+function prettyJson(s){
+  if(s==null||s==='') return '';
+  try { return JSON.stringify(JSON.parse(s), null, 2); } catch(_) { return s; }
 }
 
 /* ============ 생성물 보관함 ============ */
