@@ -190,4 +190,8 @@ class UsageLog(Base):
     detail = Column(String(500), nullable=True)     # 에러 메시지 등
     duration_ms = Column(Integer, nullable=True)
     client_ip = Column(String(64), nullable=True)
+    # 스킬(외부 API) 감사용: AI가 보낸 요청 파라미터와 외부에서 받은 응답(요약)
+    # 자격증명/인증 헤더는 저장하지 않는다. 응답은 크기 상한으로 잘라 보관.
+    request_params = Column(Text, nullable=True)
+    response_preview = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
