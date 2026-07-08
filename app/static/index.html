@@ -748,13 +748,21 @@
         </div>
       </div>
       <div>
-        <label class="mt-lb" style="display:flex; align-items:center; justify-content:space-between;">
+        <label class="mt-lb" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
           <span>회의 내용 · 메모 / 녹취 <span style="color:var(--danger);">*</span></span>
-          <button id="mtMicBtn" type="button" class="comp-icon" onclick="minutesMic()" title="음성으로 받아쓰기" style="width:30px; height:30px;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
-          </button>
+          <span style="display:flex; align-items:center; gap:6px;">
+            <input id="mtAudioFile" type="file" accept="audio/*,video/mp4,.m4a,.amr" style="display:none" onchange="minutesTranscribe(this)">
+            <button type="button" class="sm-btn" onclick="document.getElementById('mtAudioFile').click()" title="회의 녹음 파일을 올려 자동 전사(서버에서 처리, 원본 보관)" style="padding:5px 9px; font-size:11px; display:flex; align-items:center; gap:4px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+              녹음 전사
+            </button>
+            <button id="mtMicBtn" type="button" class="comp-icon" onclick="minutesMic()" title="실시간 음성 받아쓰기(크롬)" style="width:30px; height:30px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+            </button>
+          </span>
         </label>
-        <textarea id="mtNotes" class="field" rows="7" placeholder="회의에서 오간 내용을 자유롭게 적거나 붙여넣으세요. 정돈되지 않아도 됩니다. AI가 회의내용·특기사항으로 나눠 정리합니다." style="resize:vertical; min-height:120px; line-height:1.6;"></textarea>
+        <div id="mtTtransStatus" class="hidden" style="font:500 11.5px/1.5 var(--font-sans); color:var(--accent); margin-bottom:6px;"></div>
+        <textarea id="mtNotes" class="field" rows="7" placeholder="직접 적거나, 녹음 파일을 올려 자동 전사하세요. 정돈되지 않아도 됩니다. AI가 회의내용·특기사항으로 나눠 정리합니다." style="resize:vertical; min-height:120px; line-height:1.6;"></textarea>
       </div>
     </div>
     <div style="display:flex; gap:8px; justify-content:flex-end; padding:14px 22px 20px;">
@@ -1390,6 +1398,45 @@ function minutesMic(){
   _mtRecog.onend=()=>{ _mtRec=false; _mtRecog=null; btn.classList.remove('rec'); };
   _mtRecog.onerror=()=>{ _mtRec=false; _mtRecog=null; btn.classList.remove('rec'); };
   try{ _mtRecog.start(); }catch(_){ _mtRec=false; _mtRecog=null; }
+}
+let _mtTransBusy=false;
+async function minutesTranscribe(input){
+  const f=input.files&&input.files[0]; input.value='';   // 같은 파일 재선택 허용
+  if(!f) return;
+  if(_mtTransBusy){ toast('이미 전사 중입니다',true); return; }
+  const st=document.getElementById('mtTtransStatus');
+  const show=(msg)=>{ st.classList.remove('hidden'); st.textContent=msg; };
+  _mtTransBusy=true;
+  const t0=Date.now();
+  try{
+    show('🎙 업로드 중… ('+f.name+')');
+    const fd=new FormData(); fd.append('file', f);
+    const res=await fetch('/api/minutes/transcribe',{method:'POST',
+      headers: token?{'Authorization':'Bearer '+token}:{}, body:fd});
+    if(!res.ok){ let d='HTTP '+res.status; try{const j=await res.json(); if(j&&j.detail)d=j.detail;}catch(_){} throw new Error(d); }
+    const {job_id}=await res.json();
+    show('🎙 전사 중… 회의가 길면 몇 분 걸릴 수 있어요 (0초)');
+    // 폴링(3초 간격). 브라우저를 닫아도 서버는 계속 처리하며, 원본 녹음은 이미 보관됨.
+    for(;;){
+      await new Promise(r=>setTimeout(r,3000));
+      const elapsed=Math.round((Date.now()-t0)/1000);
+      let jr;
+      try{ jr=await api('GET','/minutes/transcribe/'+job_id); }
+      catch(e){ throw new Error(e.message||'상태 조회 실패'); }
+      if(jr.status==='done'){
+        const ta=document.getElementById('mtNotes');
+        ta.value=(ta.value.trim()? ta.value.trim()+'\n\n':'')+(jr.transcript||'');
+        show('✅ 전사 완료 · 녹음 원본은 보관함에 저장되었습니다');
+        setTimeout(()=>st.classList.add('hidden'),4000);
+        toast('전사 완료'); break;
+      }
+      if(jr.status==='error'){ throw new Error(jr.error||'전사 실패'); }
+      show('🎙 전사 중… ('+elapsed+'초)');
+    }
+  }catch(e){
+    show(''); st.classList.add('hidden');
+    toast('전사 실패: '+(e.message||''),true);
+  }finally{ _mtTransBusy=false; }
 }
 
 function welcomeHTML(){
