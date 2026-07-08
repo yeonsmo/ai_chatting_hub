@@ -64,7 +64,42 @@ CREATE_SPREADSHEET = {
     },
 }
 
-TOOLS = {CREATE_DOCUMENT["name"]: CREATE_DOCUMENT, CREATE_SPREADSHEET["name"]: CREATE_SPREADSHEET}
+CREATE_MEETING_MINUTES = {
+    "name": "create_meeting_minutes",
+    "description": (
+        "회사 표준 회의록 양식(HP-QP-750-03)에 맞춰 완성된 PDF 회의록을 생성한다. "
+        "사용자가 회의 메모/녹취를 주고 회의록 작성을 요청하면 이 도구를 사용한다. "
+        "회의 내용을 분석해 아래 항목을 채우되, 메모에 없는 항목은 비워 둔다(지어내지 말 것). "
+        "content(회의내용)는 핵심을 번호매김/문단으로 정리하고, notes(특기사항)에는 결정사항·"
+        "액션아이템·후속조치를 항목별로 최대 9개까지 넣는다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "datetime": {"type": "string", "description": "회의 일시 (예: 2026-07-08 14:00)"},
+            "place": {"type": "string", "description": "회의 장소"},
+            "dept": {"type": "string", "description": "작성부서"},
+            "writer": {"type": "string", "description": "작성자"},
+            "ext_company": {"type": "string", "description": "외부업체명(있을 때만)"},
+            "inside": {"type": "array", "items": {"type": "string"},
+                       "description": "내부 참석자 이름 목록(최대 3명 표기)"},
+            "outside": {"type": "array", "items": {"type": "string"},
+                        "description": "외부 참석자 이름 목록(최대 5명 표기)"},
+            "purpose": {"type": "string", "description": "회의목적(한 줄 요약)"},
+            "content": {"type": "string", "description": "회의내용 본문. 번호/문단으로 정리, 줄바꿈은 \\n"},
+            "notes": {"type": "array", "items": {"type": "string"},
+                      "description": "특기사항(결정사항·액션아이템·후속조치) 최대 9개"},
+            "mgmt_no": {"type": "string", "description": "관리번호(있을 때만)"},
+            "approval_no": {"type": "string", "description": "승인번호(있을 때만)"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["content"],
+    },
+}
+
+TOOLS = {CREATE_DOCUMENT["name"]: CREATE_DOCUMENT,
+         CREATE_SPREADSHEET["name"]: CREATE_SPREADSHEET,
+         CREATE_MEETING_MINUTES["name"]: CREATE_MEETING_MINUTES}
 
 
 def anthropic_defs() -> list:
@@ -95,4 +130,8 @@ def run_tool(name: str, params: dict):
         data, ct, ext = doc_gen.render("xlsx", sheets=sheets)
         fn = safe_filename(params.get("filename"), "표", ext)
         return data, ct, ext, fn
+    if name == "create_meeting_minutes":
+        data = doc_gen.render_minutes_pdf(params or {})
+        fn = safe_filename(params.get("filename") or params.get("purpose"), "회의록", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
     raise ValueError(f"알 수 없는 생성 도구: {name}")
