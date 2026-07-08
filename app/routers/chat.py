@@ -379,7 +379,8 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
             raise
 
     titles = {s.name: s.title for s in skills}
-    titles.update({"create_document": "문서 생성", "create_spreadsheet": "엑셀 생성"})
+    titles.update({"create_document": "문서 생성", "create_spreadsheet": "엑셀 생성",
+                   "create_meeting_minutes": "회의록(HP 양식) 생성"})
     ctx.llm_messages = llm_messages
     ctx.system_prompt = system_prompt
     ctx.gen_atts = gen_atts

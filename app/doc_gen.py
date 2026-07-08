@@ -168,6 +168,98 @@ def render_pdf(title: str, markdown: str) -> bytes:
     return buf.getvalue()
 
 
+# ---------------- 회의록 (HP 표준 양식 오버레이) ----------------
+
+_FORM_DIR = os.path.join(os.path.dirname(__file__), "assets", "forms")
+_MINUTES_TEMPLATE = os.path.join(_FORM_DIR, "HP-QP-750-03_meeting.pdf")
+_PAGE_H = 842.0  # A4 pt
+
+
+def _mt_wrap(text: str, font: str, size: float, maxw: float) -> list:
+    """폭 기준 줄바꿈(한글은 글자 단위). 명시적 개행도 처리."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    out, line = [], ""
+    for ch in str(text or ""):
+        if ch == "\n":
+            out.append(line); line = ""; continue
+        if stringWidth(line + ch, font, size) > maxw and line:
+            out.append(line); line = ch
+        else:
+            line += ch
+    if line:
+        out.append(line)
+    return out
+
+
+def render_minutes_pdf(fields: dict) -> bytes:
+    """HP 표준 회의록 양식(HP-QP-750-03) 위에 값을 오버레이해 PDF 생성.
+    양식은 정적 PDF(폼 필드 없음)이므로 좌표 기반으로 텍스트를 그려 원본 레이아웃을 그대로 유지한다."""
+    import io as _io
+    from reportlab.pdfgen import canvas
+    from pypdf import PdfReader, PdfWriter
+
+    fonts = _ensure_pdf_font()
+    reg = fonts["regular"]
+    buf = _io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(595, 842))
+    c.setFillColorRGB(0.09, 0.09, 0.11)
+
+    def line(text, x, ybase, size=9, center=None):
+        if text is None or text == "":
+            return
+        c.setFont(reg, size)
+        if center is not None:
+            c.drawCentredString(center, _PAGE_H - ybase, str(text))
+        else:
+            c.drawString(x, _PAGE_H - ybase, str(text))
+
+    def block(text, x, ytop, maxw, maxlines, size=9.5, lh=14):
+        if not text:
+            return
+        c.setFont(reg, size)
+        y = ytop
+        for ln in _mt_wrap(text, reg, size, maxw)[:maxlines]:
+            c.drawString(x, _PAGE_H - y, ln); y += lh
+
+    g = fields.get
+    line(g("mgmt_no"), 75, 133, 8.5)
+    line(g("approval_no"), 360, 133, 8.5)
+    line(g("datetime"), 125, 155)
+    line(g("dept"), 326, 155)
+    line(g("writer"), 486, 155)
+    line(g("place"), 125, 178)
+    line(g("ext_company"), 326, 178)
+    inside = g("inside") or []
+    outside = g("outside") or []
+    if isinstance(inside, str):
+        inside = [s.strip() for s in inside.replace(",", " ").split() if s.strip()]
+    if isinstance(outside, str):
+        outside = [s.strip() for s in outside.replace(",", " ").split() if s.strip()]
+    for i, cx in enumerate([143, 190, 238]):
+        if i < len(inside):
+            line(inside[i], 0, 201, 8, center=cx)
+    for i, cx in enumerate([353, 409, 457, 504, 552]):
+        if i < len(outside):
+            line(outside[i], 0, 201, 8, center=cx)
+    line(g("purpose"), 125, 225)
+    block(g("content"), 125, 246, 446, 18, size=9.5, lh=14)
+    tops = [513, 542, 572, 601, 631, 660, 690, 719, 749]
+    notes = g("notes") or []
+    if isinstance(notes, str):
+        notes = [notes]
+    for i, item in enumerate(notes[:9]):
+        block(item, 124, tops[i], 447, 2, size=9, lh=13.5)
+    c.save(); buf.seek(0)
+
+    overlay = PdfReader(buf).pages[0]
+    tmpl = PdfReader(_MINUTES_TEMPLATE)
+    page = tmpl.pages[0]
+    page.merge_page(overlay)
+    writer = PdfWriter(); writer.add_page(page)
+    out = _io.BytesIO(); writer.write(out)
+    return out.getvalue()
+
+
 # ---------------- XLSX ----------------
 
 def render_xlsx(sheets: list) -> bytes:
