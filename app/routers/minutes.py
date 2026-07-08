@@ -9,19 +9,23 @@
 - 잡 상태는 인메모리(재시작 시 소멸)지만 녹음/전사는 DB에 남으므로 유실되지 않는다.
 """
 import asyncio
+import json
 import os
+import re
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.config import settings
 from app.database import get_db, AsyncSessionLocal
 from app.dependencies import get_current_user
 from app.file_utils import new_stored_name, stored_path
-from app.models import User, UserRole, Attachment
+from app.models import User, UserRole, Attachment, ModelRoute
 from app.routers.files import read_upload_or_413, to_response
-from app import transcribe
+from app import transcribe, doc_gen, gen_tools
+from app.providers import run_chat, OPENAI_FAMILY, friendly_api_error
 
 router = APIRouter(prefix="/minutes", tags=["minutes"])
 
@@ -122,3 +126,104 @@ async def transcribe_status(
         raise HTTPException(status_code=403, detail="권한이 없습니다")
     return {"status": job["status"], "transcript": job.get("transcript", ""),
             "error": job.get("error", ""), "attachment_id": job.get("attachment_id")}
+
+
+# ---------------- 회의록 생성 (구조화 출력, 모델 고정) ----------------
+
+async def _resolve_minutes_route(db: AsyncSession) -> ModelRoute:
+    """회의록 정리용 모델 라우팅 결정. 설정 key(기본 gpt-5-pro) → 없으면 GPT 계열 →
+    그래도 없으면 아무 채팅 라우팅으로 대체. 도구 호출이 아니라 구조화 출력이므로
+    어떤 채팅 모델이든 동작한다."""
+    want = (settings.minutes_model_key or "").strip()
+    if want:
+        r = (await db.execute(select(ModelRoute).where(ModelRoute.key == want))).scalar_one_or_none()
+        if r and r.enabled and (r.kind or "chat") == "chat":
+            return r
+    rows = (await db.execute(select(ModelRoute).where(ModelRoute.enabled == True))).scalars().all()  # noqa: E712
+    for cand in rows:  # GPT 계열 우선
+        if cand.provider in OPENAI_FAMILY and (cand.kind or "chat") == "chat" and "gpt" in (cand.key or "").lower():
+            return cand
+    for cand in rows:  # 그 외 채팅 모델
+        if (cand.kind or "chat") == "chat":
+            return cand
+    raise HTTPException(status_code=500, detail="회의록 생성용 AI 모델이 등록되어 있지 않습니다. 관리자에게 문의하세요.")
+
+
+def _extract_json_obj(text: str) -> dict:
+    """모델 응답에서 JSON 객체 추출(코드펜스/앞뒤 잡텍스트 허용)."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*", "", t).strip()
+        if t.endswith("```"):
+            t = t[:-3].strip()
+    i, j = t.find("{"), t.rfind("}")
+    if i >= 0 and j > i:
+        t = t[i:j + 1]
+    return json.loads(t)
+
+
+@router.post("/generate")
+async def generate_minutes(
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """회의 메타 + 메모/전사문 → (고정 모델의 구조화 출력) → 회사 표준 양식 회의록 PDF.
+    도구 호출에 의존하지 않아 어떤 모델(가비아 GPT Pro 포함)에서도 안정적으로 생성된다."""
+    notes = str(payload.get("notes") or "").strip()
+    if not notes:
+        raise HTTPException(status_code=400, detail="회의 내용(메모/전사)을 입력해주세요")
+    title = str(payload.get("title") or "").strip()
+
+    route = await _resolve_minutes_route(db)
+    system_prompt = ("너는 회의록 정리 보조자다. 반드시 유효한 JSON 객체 하나만 출력한다. "
+                     "코드펜스(```), 설명, 인사말을 절대 붙이지 마라.")
+    user_msg = (
+        "다음 회의 메모/전사문을 아래 JSON 스키마로만 정리하라.\n"
+        '스키마: {"purpose": "회의 목적 한 줄", '
+        '"content": "회의 내용 본문(핵심 위주 번호매김/문단, 줄바꿈은 \\n)", '
+        '"notes": ["특기사항·결정사항·액션아이템 항목", "... 최대 9개"]}\n'
+        "규칙: 메모에 실제로 있는 사실만 사용하고 지어내지 마라. 없으면 빈 문자열/빈 배열로 둔다.\n\n"
+        f"[회의 제목/목적] {title or '(미입력)'}\n"
+        f"[회의 메모/전사]\n{notes}"
+    )
+    messages = [{"role": "user", "content": user_msg}]
+    try:
+        outcome = await run_chat(db, route.provider, route.provider_model_id,
+                                 system_prompt, messages, None)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=friendly_api_error(e))
+
+    try:
+        parsed = _extract_json_obj(outcome.text)
+    except (ValueError, TypeError):
+        parsed = {"purpose": title, "content": notes, "notes": []}  # 파싱 실패 시 원문 보존
+
+    fields = {
+        "datetime": payload.get("datetime"), "place": payload.get("place"),
+        "dept": payload.get("dept"), "writer": payload.get("writer"),
+        "ext_company": payload.get("ext_company"),
+        "inside": payload.get("inside"), "outside": payload.get("outside"),
+        "mgmt_no": payload.get("mgmt_no"), "approval_no": payload.get("approval_no"),
+        "purpose": parsed.get("purpose") or title,
+        "content": parsed.get("content") or notes,
+        "notes": parsed.get("notes") or [],
+    }
+    data = doc_gen.render_minutes_pdf(fields)
+    fn = gen_tools.safe_filename(title or "회의록", "회의록", "pdf")
+
+    stored = new_stored_name(fn)
+    with open(stored_path(stored), "wb") as f:
+        f.write(data)
+    att = Attachment(
+        user_id=current_user.id, filename=fn, content_type=doc_gen.PDF_CT,
+        size_bytes=len(data), stored_name=stored, kind="generated", origin="회의록",
+    )
+    db.add(att)
+    await db.commit()
+    await db.refresh(att)
+    return {"attachment": to_response(att),
+            "input_tokens": outcome.input_tokens, "output_tokens": outcome.output_tokens,
+            "model": route.label}
