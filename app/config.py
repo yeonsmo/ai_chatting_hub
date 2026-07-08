@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     whisper_compute: str = "int8"        # cpu=int8 권장, cuda면 "float16"
     whisper_language: str = "ko"
 
+    # 회의록 정리에 사용할 모델(라우팅 key). 기본 가비아 GPT Pro. 없으면 자동 대체.
+    minutes_model_key: str = "gpt-5-pro"
+
     # 스킬/연동 SSRF 예외: 신뢰하는 사내 호스트만 사설 대역이어도 허용.
     # 콤마 구분. 와일드카드(*.example.com) / 정확한 호스트 / CIDR(192.168.0.0/24) 지원.
     # 기본값은 사내 도메인만. 비우면 모든 사설 대역 차단(가장 안전).

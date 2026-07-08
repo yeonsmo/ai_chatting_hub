@@ -1344,38 +1344,42 @@ function closeMinutes(){
   if(_mtRecog){ try{_mtRecog.stop();}catch(_){} }
   document.getElementById('minutesModal').classList.add('hidden');
 }
-function submitMinutes(){
-  if(busy){ toast('이전 응답을 기다리는 중이에요',true); return; }
+let _mtGenBusy=false;
+async function submitMinutes(){
+  if(_mtGenBusy) return;
   const v=id=>document.getElementById(id).value.trim();
   const notes=v('mtNotes');
   if(!notes){ toast('회의 내용을 입력해주세요',true); document.getElementById('mtNotes').focus(); return; }
   // 일시 = 창 연 시각 ~ 생성 누른 시각
   const start=_mtStart||new Date(), end=new Date();
-  const whenTxt=_fmtDay(start)+' '+_fmtHM(start)+'~'+_fmtHM(end);
-  const writer=(me&&me.username)||'';
-  let p='아래 회의 정보를 바탕으로 create_meeting_minutes 도구를 호출해 회사 표준 양식(HP-QP-750-03) 회의록 PDF를 만들어줘.\n\n';
-  p+='[입력 정보]\n';
-  p+='- 목적/제목: '+(v('mtTitle')||'(미입력)')+'\n';
-  p+='- 일시: '+whenTxt+'\n';
-  p+='- 작성부서: '+(v('mtDept')||'(미입력)')+'\n';
-  p+='- 작성자: '+(writer||'(미입력)')+'\n';
-  p+='- 장소: '+(v('mtPlace')||'(미입력)')+'\n';
-  p+='- 외부업체명: '+(v('mtExtCo')||'(없음)')+'\n';
-  p+='- 내부참석자: '+(v('mtInside')||'(미입력)')+'\n';
-  p+='- 외부참석자: '+(v('mtOutside')||'(없음)')+'\n\n';
-  p+='[회의 메모/녹취]\n'+notes+'\n\n';
-  p+='도구 호출 지침:\n';
-  p+='- datetime/place/dept/writer/ext_company: 위 입력 정보를 그대로.\n';
-  p+='- inside/outside: 참석자 이름 배열(쉼표 분리).\n';
-  p+='- purpose: 회의 목적을 한 줄로.\n';
-  p+='- content: 회의 메모를 핵심 위주로 번호매김/문단 정리(줄바꿈 \\n). 사실만, 지어내지 말 것.\n';
-  p+='- notes: 결정사항·액션아이템·후속조치를 항목별로(최대 9개). 없으면 비워 둠.\n';
-  p+='메모에 없는 항목은 비워서 호출해줘.';
-  closeMinutes();
-  newChat(activeProjectId);
-  const inp=document.getElementById('input');
-  inp.value=p; autoResize(inp);
-  sendMsg();
+  const split=s=>s.split(',').map(x=>x.trim()).filter(Boolean);
+  const body={
+    title:v('mtTitle'),
+    datetime:_fmtDay(start)+' '+_fmtHM(start)+'~'+_fmtHM(end),
+    dept:v('mtDept'), writer:(me&&me.username)||'',
+    place:v('mtPlace'), ext_company:v('mtExtCo'),
+    inside:split(v('mtInside')), outside:split(v('mtOutside')),
+    notes:notes,
+  };
+  const st=document.getElementById('mtTtransStatus');
+  const show=m=>{ st.classList.remove('hidden'); st.textContent=m; };
+  _mtGenBusy=true;
+  const btns=document.querySelectorAll('#minutesModal .primary-btn'); btns.forEach(b=>b.disabled=true);
+  try{
+    show('📝 회의록 생성 중… (AI가 회의 내용을 정리하고 있어요)');
+    const r=await api('POST','/minutes/generate',body);   // 고정 모델 + 구조화 출력 → HP 양식 PDF
+    show('✅ 회의록 생성 완료 · 보관함에 저장되었습니다');
+    toast('회의록이 생성되었습니다');
+    // 자동 다운로드
+    try{ await apiDownload('/files/'+r.attachment.id+'/download', r.attachment.filename); }catch(_){}
+    setTimeout(()=>{ closeMinutes(); }, 900);
+  }catch(e){
+    show(''); st.classList.add('hidden');
+    toast('회의록 생성 실패: '+(e.message||''),true);
+  }finally{
+    _mtGenBusy=false;
+    document.querySelectorAll('#minutesModal .primary-btn').forEach(b=>b.disabled=false);
+  }
 }
 let _mtRecog=null, _mtRec=false;
 function minutesMic(){
