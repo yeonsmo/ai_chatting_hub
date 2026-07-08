@@ -79,7 +79,7 @@ async def list_generated(
     """내가 만든 생성물(문서·이미지) 보관함 — 최신순."""
     result = await db.execute(
         select(Attachment)
-        .where(Attachment.user_id == current_user.id, Attachment.kind == "generated")
+        .where(Attachment.user_id == current_user.id, Attachment.kind.in_(["generated", "recording"]))
         .order_by(Attachment.id.desc())
         .limit(500)
     )

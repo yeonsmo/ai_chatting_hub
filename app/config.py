@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     upload_dir: str = "data/uploads"
     max_upload_mb: int = 50
 
+    # 회의 녹음 전사(자체 호스팅 STT). API 키 불필요, 오디오가 서버 밖으로 나가지 않음.
+    # 모델은 최초 사용 시 HuggingFace에서 1회 다운로드됨(서버 인터넷 필요) → 이후 캐시.
+    # 모델: tiny/base/small/medium/large-v3 (클수록 정확·느림·메모리↑). 기본 small.
+    whisper_model: str = "small"
+    whisper_device: str = "cpu"          # GPU 서버면 "cuda"
+    whisper_compute: str = "int8"        # cpu=int8 권장, cuda면 "float16"
+    whisper_language: str = "ko"
+
     # 스킬/연동 SSRF 예외: 신뢰하는 사내 호스트만 사설 대역이어도 허용.
     # 콤마 구분. 와일드카드(*.example.com) / 정확한 호스트 / CIDR(192.168.0.0/24) 지원.
     # 기본값은 사내 도메인만. 비우면 모든 사설 대역 차단(가장 안전).

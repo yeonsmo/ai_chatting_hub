@@ -10,7 +10,7 @@ from app.database import AsyncSessionLocal, init_db
 from app.file_utils import ensure_upload_dir
 from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware, SecurityHeadersMiddleware
 from app.models import User, UserRole
-from app.routers import auth, chat, users, keys, files, projects, admin, settings_admin
+from app.routers import auth, chat, users, keys, files, projects, admin, settings_admin, minutes
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -63,6 +63,7 @@ app.include_router(chat.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(keys.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
+app.include_router(minutes.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(settings_admin.router, prefix="/api")
