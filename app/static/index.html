@@ -366,6 +366,8 @@
   .kvv { flex:1; min-width:0; font:400 12px/1.5 var(--font-sans); color:var(--fg-1); word-break:break-word; }
   .kvmuted { color:var(--fg-3); font:400 11.5px/1.5 var(--font-sans); }
   .kvraw { white-space:pre-wrap; word-break:break-word; font:400 11.5px/1.5 var(--font-sans); color:var(--fg-1); }
+  .mt-lb { display:block; font:600 11px/1.4 var(--font-sans); color:var(--fg-2); margin-bottom:5px; }
+  #mtMicBtn.rec { color:#fff; background:var(--danger); border-color:var(--danger); }
 
   /* 토스트 */
   #toasts { position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; }
@@ -488,10 +490,14 @@
           <button id="segArchive" onclick="setListMode('archive')">보관함</button>
         </div>
       </div>
-      <div style="padding:0 14px 10px;">
-        <button onclick="openGallery()" class="glass-btn" style="width:100%; gap:8px; padding:9px; font:600 12px/1 var(--font-sans);">
+      <div style="padding:0 14px 8px; display:flex; gap:8px;">
+        <button onclick="openGallery()" class="glass-btn" style="flex:1; gap:7px; padding:9px; font:600 12px/1 var(--font-sans);">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          생성물 보관함
+          보관함
+        </button>
+        <button onclick="openMinutes()" class="glass-btn" style="flex:1; gap:7px; padding:9px; font:600 12px/1 var(--font-sans);">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          회의록
         </button>
       </div>
 
@@ -690,6 +696,52 @@
     <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:18px;">
       <button onclick="closeConfirm(false)" class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:var(--fg-2); padding:9px 16px;">취소</button>
       <button id="confirmOkBtn" class="primary-btn" style="padding:9px 18px; border-radius:10px; background:var(--danger); color:#fff; box-shadow:none;">삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 회의록 작성 모달 ================= -->
+<div id="minutesModal" class="modal-back hidden" onclick="if(event.target===this)closeMinutes()">
+  <div class="modal-card" style="width:100%; max-width:560px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 22px 4px;">
+      <div style="font:700 16px/1.2 var(--font-sans); color:var(--fg-1);">📝 회의록 작성</div>
+      <button class="mini-act" onclick="closeMinutes()" style="width:30px; height:30px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="font:400 12px/1.6 var(--font-sans); color:var(--fg-3); padding:0 22px 12px;">회의 메모나 녹취를 붙여넣으면 AI가 표준 회의록(안건·논의·결정사항·액션아이템)으로 정리합니다.</div>
+    <div style="flex:1; overflow-y:auto; padding:0 22px 6px; display:flex; flex-direction:column; gap:11px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:11px;">
+        <div>
+          <label class="mt-lb">회의 제목</label>
+          <input id="mtTitle" class="field" placeholder="예: 3분기 영업 전략 회의">
+        </div>
+        <div>
+          <label class="mt-lb">일시</label>
+          <input id="mtWhen" type="datetime-local" class="field">
+        </div>
+      </div>
+      <div>
+        <label class="mt-lb">참석자</label>
+        <input id="mtWho" class="field" placeholder="예: 홍길동(영업), 김철수(기획), 이영희(개발)">
+      </div>
+      <div>
+        <label class="mt-lb" style="display:flex; align-items:center; justify-content:space-between;">
+          <span>회의 내용 · 메모 / 녹취 <span style="color:var(--danger);">*</span></span>
+          <button id="mtMicBtn" type="button" class="comp-icon" onclick="minutesMic()" title="음성으로 받아쓰기" style="width:30px; height:30px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+          </button>
+        </label>
+        <textarea id="mtNotes" class="field" rows="8" placeholder="회의에서 오간 내용을 자유롭게 적거나 붙여넣으세요. 정돈되지 않아도 됩니다." style="resize:vertical; min-height:130px; line-height:1.6;"></textarea>
+      </div>
+      <label style="display:flex; align-items:center; gap:9px; font:500 12.5px/1.4 var(--font-sans); color:var(--fg-2); cursor:pointer;">
+        <input id="mtDocx" type="checkbox" checked style="width:16px; height:16px; accent-color:var(--accent);">
+        정리된 회의록을 Word(.docx) 문서로도 만들기
+      </label>
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; padding:14px 22px 20px;">
+      <button onclick="closeMinutes()" class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:var(--fg-2); padding:10px 16px;">취소</button>
+      <button onclick="submitMinutes()" class="primary-btn" style="padding:10px 20px; border-radius:11px;">회의록 생성</button>
     </div>
   </div>
 </div>
@@ -1241,6 +1293,68 @@ function pickSuggestion(idx){
   const inp=document.getElementById('input');
   inp.value=s.text; autoResize(inp);
   sendMsg();
+}
+
+/* ============ 회의록 작성 ============ */
+function openMinutes(){
+  // 일시 기본값 = 지금(로컬)
+  const n=new Date(); n.setMinutes(n.getMinutes()-n.getTimezoneOffset());
+  document.getElementById('mtWhen').value=n.toISOString().slice(0,16);
+  document.getElementById('mtTitle').value='';
+  document.getElementById('mtWho').value='';
+  document.getElementById('mtNotes').value='';
+  document.getElementById('mtDocx').checked=true;
+  document.getElementById('minutesModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('mtNotes').focus(),50);
+}
+function closeMinutes(){
+  if(_mtRecog){ try{_mtRecog.stop();}catch(_){} }
+  document.getElementById('minutesModal').classList.add('hidden');
+}
+function submitMinutes(){
+  if(busy){ toast('이전 응답을 기다리는 중이에요',true); return; }
+  const title=document.getElementById('mtTitle').value.trim();
+  const when=document.getElementById('mtWhen').value.trim();
+  const who=document.getElementById('mtWho').value.trim();
+  const notes=document.getElementById('mtNotes').value.trim();
+  const docx=document.getElementById('mtDocx').checked;
+  if(!notes){ toast('회의 내용을 입력해주세요',true); document.getElementById('mtNotes').focus(); return; }
+  const whenTxt=when?when.replace('T',' '):'(미입력)';
+  let p='다음 회의 메모를 바탕으로 한국어 표준 회의록을 작성해줘.\n\n';
+  p+='■ 제목: '+(title||'(미입력)')+'\n';
+  p+='■ 일시: '+whenTxt+'\n';
+  p+='■ 참석자: '+(who||'(미입력)')+'\n\n';
+  p+='■ 회의 메모/녹취:\n'+notes+'\n\n';
+  p+='아래 형식(마크다운)으로 정리해줘:\n';
+  p+='# 회의록\n## 개요\n- 제목 / 일시 / 참석자\n## 안건\n## 주요 논의사항\n## 결정사항\n## 액션 아이템 (담당자 · 기한)\n\n';
+  p+='메모에 있는 사실만 근거로 정리하고, 내용이 없는 항목은 "해당 없음"으로 표기해줘. 추측으로 지어내지 마.';
+  if(docx) p+=' 정리가 끝나면 이 회의록을 Word(.docx) 문서로도 만들어줘.';
+  closeMinutes();
+  newChat(activeProjectId);
+  const inp=document.getElementById('input');
+  inp.value=p; autoResize(inp);
+  sendMsg();
+}
+let _mtRecog=null, _mtRec=false;
+function minutesMic(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ toast('이 브라우저는 음성 입력을 지원하지 않아요 (크롬 권장)',true); return; }
+  const btn=document.getElementById('mtMicBtn');
+  if(_mtRec){ try{_mtRecog.stop();}catch(_){} return; }
+  _mtRecog=new SR(); _mtRecog.lang='ko-KR'; _mtRecog.interimResults=true; _mtRecog.continuous=true;
+  const ta=document.getElementById('mtNotes'); const base=ta.value;
+  _mtRecog.onresult=(e)=>{
+    let fin='',interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) fin+=t; else interim+=t;
+    }
+    if(fin) ta.value=(ta.value?ta.value:base)+fin;
+  };
+  _mtRecog.onstart=()=>{ _mtRec=true; btn.classList.add('rec'); };
+  _mtRecog.onend=()=>{ _mtRec=false; btn.classList.remove('rec'); };
+  _mtRecog.onerror=()=>{ _mtRec=false; btn.classList.remove('rec'); };
+  try{ _mtRecog.start(); }catch(_){}
 }
 
 function welcomeHTML(){
