@@ -299,10 +299,11 @@
   .md li::marker { color:var(--accent); }
   .md code { background:var(--fill-2); padding:.12rem .38rem; border-radius:.35rem; font:.86em var(--font-mono); color:var(--accent-coral); }
   .md blockquote { border-left:3px solid var(--accent); padding:2px 0 2px .9rem; color:var(--fg-2); margin:.5rem 0; background:var(--accent-grad-soft); border-radius:0 8px 8px 0; }
-  /* 표: 모바일에서 열이 글자단위로 뭉개지지 않도록 가로 스크롤 처리 */
-  .md table { display:block; width:max-content; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border-collapse:collapse; margin:.55rem 0; font-size:.92em; }
-  .md th, .md td { border:1px solid var(--rim-hair); padding:.42rem .6rem; text-align:left; color:var(--fg-2); white-space:nowrap; }
-  .md th { background:var(--fill-1); font-weight:600; color:var(--fg-1); }
+  /* 표: 좁은 화면에서 열이 글자단위로 뭉개지지 않도록 가로 스크롤. 헤더만 nowrap이라
+     데스크톱에서 긴 본문 셀은 정상적으로 줄바꿈되고, 넘칠 때만 가로 스크롤된다. */
+  .md table { display:block; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border-collapse:collapse; margin:.55rem 0; font-size:.92em; }
+  .md th, .md td { border:1px solid var(--rim-hair); padding:.42rem .6rem; text-align:left; color:var(--fg-2); }
+  .md th { background:var(--fill-1); font-weight:600; color:var(--fg-1); white-space:nowrap; }
   .md a { color:var(--accent-pink); text-decoration:underline; }
   .md hr { border:none; border-top:1px solid var(--rim-hair); margin:.8rem 0; }
   .code-card { border-radius:var(--r-md); overflow:hidden; border:1px solid var(--rim-hair); box-shadow:var(--shadow-2); margin:.55rem 0; }
@@ -1373,7 +1374,8 @@ function minutesMic(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){ toast('이 브라우저는 음성 입력을 지원하지 않아요 (크롬 권장)',true); return; }
   const btn=document.getElementById('mtMicBtn');
-  if(_mtRec){ try{_mtRecog.stop();}catch(_){} return; }
+  if(_mtRec||_mtRecog){ try{_mtRecog.stop();}catch(_){} return; }  // 연타 시 두번째 인스턴스 생성 방지
+  _mtRec=true;                                                     // start 전에 동기적으로 잠금
   _mtRecog=new SR(); _mtRecog.lang='ko-KR'; _mtRecog.interimResults=true; _mtRecog.continuous=true;
   const ta=document.getElementById('mtNotes'); const base=ta.value;
   _mtRecog.onresult=(e)=>{
@@ -1385,9 +1387,9 @@ function minutesMic(){
     if(fin) ta.value=(ta.value?ta.value:base)+fin;
   };
   _mtRecog.onstart=()=>{ _mtRec=true; btn.classList.add('rec'); };
-  _mtRecog.onend=()=>{ _mtRec=false; btn.classList.remove('rec'); };
-  _mtRecog.onerror=()=>{ _mtRec=false; btn.classList.remove('rec'); };
-  try{ _mtRecog.start(); }catch(_){}
+  _mtRecog.onend=()=>{ _mtRec=false; _mtRecog=null; btn.classList.remove('rec'); };
+  _mtRecog.onerror=()=>{ _mtRec=false; _mtRecog=null; btn.classList.remove('rec'); };
+  try{ _mtRecog.start(); }catch(_){ _mtRec=false; _mtRecog=null; }
 }
 
 function welcomeHTML(){
@@ -2629,7 +2631,7 @@ async function fetchLogs(reset){
     const logs=await api('GET',`/admin/logs?limit=100&offset=${logOffset}${uid?'&user_id='+uid:''}${act?'&action='+act:''}${days?'&days='+days:''}`);
     logOffset+=logs.length;
     loadedLogs.push(...logs);
-    const actLabel={chat:'채팅',skill:'스킬',login:'로그인',login_failed:'로그인 실패'};
+    const actLabel=ACTION_LABELS;
     rows.insertAdjacentHTML('beforeend', logs.map(l=>{
       const isSkill=l.action==='skill';
       const hasDetail=isSkill && (l.request_params||l.response_preview);
@@ -2666,10 +2668,7 @@ function toggleLogDetail(id){
   const el=document.getElementById('ld-'+id);
   if(el) el.classList.toggle('hidden');
 }
-function prettyJson(s){
-  if(s==null||s==='') return '';
-  try { return JSON.stringify(JSON.parse(s), null, 2); } catch(_) { return s; }
-}
+const ACTION_LABELS={chat:'채팅',skill:'스킬',login:'로그인',login_failed:'로그인 실패'};
 // 감사 로그를 한글 친화적으로: 자주 쓰는 키는 한글 라벨, 나머지는 원래 키.
 const KV_LABELS={item:'품목',product:'제품',name:'이름',title:'제목',qty:'수량',quantity:'수량',
   count:'개수',stock:'재고',unit:'단위',price:'단가',amount:'금액',total:'합계',sum:'합계',
@@ -2702,7 +2701,7 @@ function renderKV(s){
 }
 function printLogs(){
   if(!loadedLogs.length){ toast('인쇄할 로그가 없습니다',true); return; }
-  const actLabel={chat:'채팅',skill:'스킬',login:'로그인',login_failed:'로그인 실패'};
+  const actLabel=ACTION_LABELS;
   const uSel=document.getElementById('lgUser'), aSel=document.getElementById('lgAction'), dSel=document.getElementById('lgDays');
   const filt=[
     uSel && uSel.value ? '직원: '+(uSel.options[uSel.selectedIndex].text) : '전체 직원',
@@ -2727,7 +2726,7 @@ function printLogs(){
     </tr>${detail}`;
   }).join('');
   const now=new Date();
-  const stamp=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const stamp=_fmtDay(now)+' '+_fmtHM(now);
   const doc=`<!doctype html><html><head><meta charset="utf-8"><title>감사 로그 - ${esc(stamp)}</title>
     <style>
       *{box-sizing:border-box;}
