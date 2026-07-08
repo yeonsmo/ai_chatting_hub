@@ -299,8 +299,9 @@
   .md li::marker { color:var(--accent); }
   .md code { background:var(--fill-2); padding:.12rem .38rem; border-radius:.35rem; font:.86em var(--font-mono); color:var(--accent-coral); }
   .md blockquote { border-left:3px solid var(--accent); padding:2px 0 2px .9rem; color:var(--fg-2); margin:.5rem 0; background:var(--accent-grad-soft); border-radius:0 8px 8px 0; }
-  .md table { border-collapse:collapse; width:100%; margin:.55rem 0; font-size:.92em; }
-  .md th, .md td { border:1px solid var(--rim-hair); padding:.42rem .6rem; text-align:left; color:var(--fg-2); }
+  /* 표: 모바일에서 열이 글자단위로 뭉개지지 않도록 가로 스크롤 처리 */
+  .md table { display:block; width:max-content; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border-collapse:collapse; margin:.55rem 0; font-size:.92em; }
+  .md th, .md td { border:1px solid var(--rim-hair); padding:.42rem .6rem; text-align:left; color:var(--fg-2); white-space:nowrap; }
   .md th { background:var(--fill-1); font-weight:600; color:var(--fg-1); }
   .md a { color:var(--accent-pink); text-decoration:underline; }
   .md hr { border:none; border-top:1px solid var(--rim-hair); margin:.8rem 0; }
@@ -717,16 +718,16 @@
           <input id="mtTitle" class="field" placeholder="예: 3분기 영업 전략 검토">
         </div>
         <div>
-          <label class="mt-lb">일시</label>
-          <input id="mtWhen" type="datetime-local" class="field">
+          <label class="mt-lb">일시 <span style="color:var(--fg-3); font-weight:400;">(자동 · 시작~종료)</span></label>
+          <input id="mtWhen" class="field" readonly title="창을 연 시각이 시작, 생성 시각이 종료로 기록됩니다" style="background:var(--fill-1); color:var(--fg-2); cursor:default;">
         </div>
         <div>
           <label class="mt-lb">작성부서</label>
-          <input id="mtDept" class="field" placeholder="예: 영업본부">
+          <select id="mtDept" class="field"></select>
         </div>
         <div>
-          <label class="mt-lb">작성자</label>
-          <input id="mtWriter" class="field" placeholder="예: 김담당">
+          <label class="mt-lb">작성자 <span style="color:var(--fg-3); font-weight:400;">(로그인 계정)</span></label>
+          <input id="mtWriter" class="field" readonly style="background:var(--fill-1); color:var(--fg-2); cursor:default;">
         </div>
         <div>
           <label class="mt-lb">장소</label>
@@ -1312,11 +1313,21 @@ function pickSuggestion(idx){
 }
 
 /* ============ 회의록 작성 ============ */
+const DEPARTMENTS = ['경영지원','연구개발전담부서','기술엔지니어링부서'];  // 추후 여기에 부서 추가
+let _mtStart=null;
+const _pad2=n=>String(n).padStart(2,'0');
+const _fmtDay=d=>d.getFullYear()+'-'+_pad2(d.getMonth()+1)+'-'+_pad2(d.getDate());
+const _fmtHM=d=>_pad2(d.getHours())+':'+_pad2(d.getMinutes());
 function openMinutes(){
-  // 일시 기본값 = 지금(로컬)
-  const n=new Date(); n.setMinutes(n.getMinutes()-n.getTimezoneOffset());
-  document.getElementById('mtWhen').value=n.toISOString().slice(0,16);
-  ['mtTitle','mtDept','mtWriter','mtPlace','mtExtCo','mtInside','mtOutside','mtNotes'].forEach(id=>document.getElementById(id).value='');
+  _mtStart=new Date();
+  // 작성부서 드롭다운(추후 DEPARTMENTS에 추가만 하면 됨)
+  document.getElementById('mtDept').innerHTML='<option value="">— 부서 선택 —</option>'+
+    DEPARTMENTS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  // 작성자 = 로그인 계정(수정 불가)
+  document.getElementById('mtWriter').value=(me&&me.username)||'';
+  // 일시 = 창 연 시각 ~ (생성 시 종료 기록)
+  document.getElementById('mtWhen').value=_fmtDay(_mtStart)+' '+_fmtHM(_mtStart)+' ~ (생성 시 종료)';
+  ['mtTitle','mtPlace','mtExtCo','mtInside','mtOutside','mtNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('minutesModal').classList.remove('hidden');
   setTimeout(()=>document.getElementById('mtNotes').focus(),50);
 }
@@ -1329,13 +1340,16 @@ function submitMinutes(){
   const v=id=>document.getElementById(id).value.trim();
   const notes=v('mtNotes');
   if(!notes){ toast('회의 내용을 입력해주세요',true); document.getElementById('mtNotes').focus(); return; }
-  const when=v('mtWhen'), whenTxt=when?when.replace('T',' '):'';
+  // 일시 = 창 연 시각 ~ 생성 누른 시각
+  const start=_mtStart||new Date(), end=new Date();
+  const whenTxt=_fmtDay(start)+' '+_fmtHM(start)+'~'+_fmtHM(end);
+  const writer=(me&&me.username)||'';
   let p='아래 회의 정보를 바탕으로 create_meeting_minutes 도구를 호출해 회사 표준 양식(HP-QP-750-03) 회의록 PDF를 만들어줘.\n\n';
   p+='[입력 정보]\n';
   p+='- 목적/제목: '+(v('mtTitle')||'(미입력)')+'\n';
-  p+='- 일시: '+(whenTxt||'(미입력)')+'\n';
+  p+='- 일시: '+whenTxt+'\n';
   p+='- 작성부서: '+(v('mtDept')||'(미입력)')+'\n';
-  p+='- 작성자: '+(v('mtWriter')||'(미입력)')+'\n';
+  p+='- 작성자: '+(writer||'(미입력)')+'\n';
   p+='- 장소: '+(v('mtPlace')||'(미입력)')+'\n';
   p+='- 외부업체명: '+(v('mtExtCo')||'(없음)')+'\n';
   p+='- 내부참석자: '+(v('mtInside')||'(미입력)')+'\n';
