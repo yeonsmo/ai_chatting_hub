@@ -639,7 +639,7 @@
 <div id="adminModal" class="modal-back hidden" onclick="if(event.target===this)closeAdmin()">
   <div class="modal-card" style="width:100%; max-width:880px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
     <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 22px 0;">
-      <div style="font:700 16px/1.2 var(--font-sans); color:var(--fg-1);">관리자 패널</div>
+      <div onclick="auditTapReveal()" style="font:700 16px/1.2 var(--font-sans); color:var(--fg-1); cursor:default; user-select:none;">관리자 패널</div>
       <button class="mini-act" onclick="closeAdmin()" style="width:30px; height:30px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
       </button>
@@ -1889,11 +1889,28 @@ function closeConfirm(v){
 /* ============ 관리자 패널 ============ */
 let adminTab='users';
 function openAdmin(){
-  const su=me&&me.role==='superadmin';
-  document.getElementById('tabConvs').classList.toggle('hidden', !su);
-  document.getElementById('tabLogs').classList.toggle('hidden', !su);
+  // 감사 탭(대화 조회·사용 로그)은 최고관리자여도 기본 숨김.
+  // 직원 앞에서 설정을 열어도 노출되지 않도록, 매번 열 때마다 다시 잠근다.
+  // 노출은 제목("관리자 패널")을 5번 연속 탭했을 때만(auditTapReveal).
+  auditUnlocked=false; auditTapCount=0;
+  document.getElementById('tabConvs').classList.add('hidden');
+  document.getElementById('tabLogs').classList.add('hidden');
   document.getElementById('adminModal').classList.remove('hidden');
   switchTab('users');
+}
+let auditUnlocked=false, auditTapCount=0, auditTapTimer=null;
+function auditTapReveal(){
+  if(!(me&&me.role==='superadmin')) return;   // 최고관리자 전용(서버도 별도 검증)
+  auditTapCount++;
+  clearTimeout(auditTapTimer);
+  auditTapTimer=setTimeout(()=>{ auditTapCount=0; }, 1500);
+  if(auditTapCount>=5){
+    auditTapCount=0; auditUnlocked=true;
+    document.getElementById('tabConvs').classList.remove('hidden');
+    document.getElementById('tabLogs').classList.remove('hidden');
+    toast('감사 메뉴가 열렸습니다');
+    switchTab('logs');
+  }
 }
 function closeAdmin(){ document.getElementById('adminModal').classList.add('hidden'); }
 function switchTab(t){
@@ -2396,7 +2413,7 @@ async function viewAdminConv(id, username){
 }
 
 /* ----- 사용 로그 탭 (superadmin) ----- */
-let logOffset=0;
+let logOffset=0, loadedLogs=[];
 async function loadLogsTab(){
   const body=document.getElementById('adminBody');
   logOffset=0;
@@ -2434,6 +2451,7 @@ async function loadLogsTab(){
         <option value="7" selected>최근 7일</option>
         <option value="30">최근 30일</option>
       </select>
+      <button class="sm-btn" style="border-color:rgba(255,122,77,0.4); color:var(--accent);" onclick="printLogs()">🖨 인쇄</button>
     </div>
     <div style="overflow-x:auto;">
       <table class="logs">
@@ -2452,10 +2470,11 @@ async function fetchLogs(reset){
   const act=document.getElementById('lgAction').value;
   const days=document.getElementById('lgDays').value;
   const rows=document.getElementById('logRows');
-  if(reset) rows.innerHTML='';
+  if(reset){ rows.innerHTML=''; loadedLogs=[]; }
   try {
     const logs=await api('GET',`/admin/logs?limit=100&offset=${logOffset}${uid?'&user_id='+uid:''}${act?'&action='+act:''}${days?'&days='+days:''}`);
     logOffset+=logs.length;
+    loadedLogs.push(...logs);
     const actLabel={chat:'채팅',skill:'스킬',login:'로그인',login_failed:'로그인 실패'};
     rows.insertAdjacentHTML('beforeend', logs.map(l=>{
       const isSkill=l.action==='skill';
@@ -2496,6 +2515,56 @@ function toggleLogDetail(id){
 function prettyJson(s){
   if(s==null||s==='') return '';
   try { return JSON.stringify(JSON.parse(s), null, 2); } catch(_) { return s; }
+}
+function printLogs(){
+  if(!loadedLogs.length){ toast('인쇄할 로그가 없습니다',true); return; }
+  const actLabel={chat:'채팅',skill:'스킬',login:'로그인',login_failed:'로그인 실패'};
+  const uSel=document.getElementById('lgUser'), aSel=document.getElementById('lgAction'), dSel=document.getElementById('lgDays');
+  const filt=[
+    uSel && uSel.value ? '직원: '+(uSel.options[uSel.selectedIndex].text) : '전체 직원',
+    aSel && aSel.value ? '행동: '+(aSel.options[aSel.selectedIndex].text) : '전체 행동',
+    dSel ? '기간: '+(dSel.options[dSel.selectedIndex].text) : ''
+  ].filter(Boolean).join(' · ');
+  const rowsHtml=loadedLogs.map(l=>{
+    const isSkill=l.action==='skill';
+    const detail=(isSkill && (l.request_params||l.response_preview)) ? `
+      <tr class="detail"><td colspan="7">
+        <div class="dl">요청 파라미터</div><pre>${esc(prettyJson(l.request_params))||'(없음)'}</pre>
+        <div class="dl">받은 응답</div><pre>${esc(prettyJson(l.response_preview))||'(없음)'}</pre>
+      </td></tr>` : '';
+    return `<tr>
+      <td>${esc(fmtDate(l.created_at))}</td>
+      <td>${esc(l.username)}</td>
+      <td>${esc(actLabel[l.action]||l.action)}</td>
+      <td>${isSkill?('🔌 '+esc(l.model||'')+(l.provider?' · '+esc(l.provider):'')):(l.model?esc(modelLabel(l.model)):'-')}</td>
+      <td>${l.input_tokens!=null?l.input_tokens+' / '+(l.output_tokens||0):'-'}</td>
+      <td>${l.client_ip?esc(l.client_ip):'-'}</td>
+      <td>${l.status==='success'?'성공':'실패'}</td>
+    </tr>${detail}`;
+  }).join('');
+  const now=new Date();
+  const stamp=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const doc=`<!doctype html><html><head><meta charset="utf-8"><title>감사 로그 - ${esc(stamp)}</title>
+    <style>
+      *{box-sizing:border-box;}
+      body{font:12px/1.5 -apple-system,'Malgun Gothic','맑은 고딕',sans-serif; color:#111; margin:24px;}
+      h1{font-size:18px; margin:0 0 2px;} .meta{color:#555; font-size:11px; margin-bottom:14px;}
+      table{width:100%; border-collapse:collapse;}
+      th,td{border:1px solid #ccc; padding:5px 7px; text-align:left; vertical-align:top; font-size:11px;}
+      th{background:#f2f2f2; text-transform:uppercase; font-size:9.5px; letter-spacing:.04em;}
+      tr.detail td{background:#fafafa;} .dl{font-weight:700; font-size:9.5px; color:#666; text-transform:uppercase; margin:2px 0;}
+      pre{margin:0 0 7px; padding:6px 8px; background:#fff; border:1px solid #e0e0e0; border-radius:4px; white-space:pre-wrap; word-break:break-word; font:10.5px/1.45 'Courier New',monospace;}
+      @media print{ body{margin:10mm;} tr{page-break-inside:avoid;} }
+    </style></head><body>
+    <h1>감사 로그 (스킬·사용 기록)</h1>
+    <div class="meta">출력: ${esc(stamp)} · 필터: ${esc(filt)} · ${loadedLogs.length}건</div>
+    <table><thead><tr><th>시간</th><th>사용자</th><th>행동</th><th>모델/스킬</th><th>토큰(입/출)</th><th>IP</th><th>상태</th></tr></thead>
+    <tbody>${rowsHtml}</tbody></table>
+    <script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>
+    </body></html>`;
+  const w=window.open('','_blank');
+  if(!w){ toast('팝업이 차단되어 인쇄 창을 열 수 없습니다',true); return; }
+  w.document.open(); w.document.write(doc); w.document.close();
 }
 
 /* ============ 생성물 보관함 ============ */
