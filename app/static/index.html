@@ -359,6 +359,13 @@
   table.logs { width:100%; border-collapse:collapse; font:400 12px/1.5 var(--font-sans); }
   table.logs th { font:600 10.5px/1 var(--font-sans); letter-spacing:.05em; text-transform:uppercase; color:var(--fg-3); text-align:left; padding:8px 10px; border-bottom:1px solid var(--rim-hair); white-space:nowrap; }
   table.logs td { padding:8px 10px; border-bottom:1px solid var(--rim-hair); color:var(--fg-2); vertical-align:top; }
+  /* 감사 로그 상세: 키-값 표시(한글 친화) */
+  .kv { display:flex; gap:8px; padding:2.5px 0; align-items:baseline; border-top:1px solid var(--rim-hair); }
+  .kv:first-child { border-top:none; }
+  .kvk { flex:0 0 auto; min-width:96px; max-width:170px; font:600 11px/1.5 var(--font-sans); color:var(--accent); word-break:break-word; }
+  .kvv { flex:1; min-width:0; font:400 12px/1.5 var(--font-sans); color:var(--fg-1); word-break:break-word; }
+  .kvmuted { color:var(--fg-3); font:400 11.5px/1.5 var(--font-sans); }
+  .kvraw { white-space:pre-wrap; word-break:break-word; font:400 11.5px/1.5 var(--font-sans); color:var(--fg-1); }
 
   /* 토스트 */
   #toasts { position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; }
@@ -2498,10 +2505,10 @@ async function fetchLogs(reset){
       if(!hasDetail) return mainRow;
       return mainRow + `
       <tr id="ld-${l.id}" class="hidden"><td colspan="8" style="background:var(--fill-1); padding:12px 14px;">
-        <div style="font:600 10.5px/1 var(--font-sans); color:var(--fg-3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">요청 파라미터 (AI가 보낸 값)</div>
-        <pre style="margin:0 0 12px; padding:9px 11px; background:var(--fill-2); border-radius:8px; font:400 11.5px/1.5 'JetBrains Mono',monospace; color:var(--fg-1); white-space:pre-wrap; word-break:break-word; max-height:180px; overflow:auto;">${esc(prettyJson(l.request_params))||'<span style="color:var(--fg-3);">(없음)</span>'}</pre>
-        <div style="font:600 10.5px/1 var(--font-sans); color:var(--fg-3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">받은 응답 (외부 API 반환 데이터 · 최대 8000자)</div>
-        <pre style="margin:0; padding:9px 11px; background:var(--fill-2); border-radius:8px; font:400 11.5px/1.5 'JetBrains Mono',monospace; color:var(--fg-1); white-space:pre-wrap; word-break:break-word; max-height:300px; overflow:auto;">${esc(prettyJson(l.response_preview))||'<span style="color:var(--fg-3);">(없음)</span>'}</pre>
+        <div style="font:600 10.5px/1 var(--font-sans); color:var(--fg-3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">📤 무엇을 요청했나 (AI가 보낸 값)</div>
+        <div style="margin:0 0 12px; padding:9px 11px; background:var(--fill-2); border-radius:8px; max-height:220px; overflow:auto;">${renderKV(l.request_params)}</div>
+        <div style="font:600 10.5px/1 var(--font-sans); color:var(--fg-3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px;">📥 무슨 데이터를 받았나 (외부 API 응답 · 최대 8000자)</div>
+        <div style="margin:0; padding:9px 11px; background:var(--fill-2); border-radius:8px; max-height:340px; overflow:auto;">${renderKV(l.response_preview)}</div>
       </td></tr>`;
     }).join(''));
     document.getElementById('moreLogsBtn').style.display = logs.length<100 ? 'none' : '';
@@ -2516,6 +2523,36 @@ function prettyJson(s){
   if(s==null||s==='') return '';
   try { return JSON.stringify(JSON.parse(s), null, 2); } catch(_) { return s; }
 }
+// 감사 로그를 한글 친화적으로: 자주 쓰는 키는 한글 라벨, 나머지는 원래 키.
+const KV_LABELS={item:'품목',product:'제품',name:'이름',title:'제목',qty:'수량',quantity:'수량',
+  count:'개수',stock:'재고',unit:'단위',price:'단가',amount:'금액',total:'합계',sum:'합계',
+  date:'일자',datetime:'일시',time:'시각',status:'상태',state:'상태',location:'위치',
+  warehouse:'창고',code:'코드',id:'ID',user_id:'사용자ID',user:'사용자',username:'사용자명',
+  email:'이메일',phone:'연락처',tel:'연락처',dept:'부서',department:'부서',company:'업체',
+  customer:'고객',vendor:'거래처',keyword:'검색어',query:'질의',q:'검색어',result:'결과',
+  results:'결과',message:'메시지',msg:'메시지',description:'설명',desc:'설명',category:'분류',
+  type:'종류',kind:'종류',model:'모델',spec:'사양',remark:'비고',note:'메모',memo:'메모',
+  quote_id:'견적번호',order_id:'주문번호',order_no:'주문번호',data:'데이터',list:'목록',
+  items:'항목',rows:'행',error:'오류',reason:'사유',address:'주소',region:'지역'};
+function kvLabel(k){ return KV_LABELS[k]!=null?KV_LABELS[k]:(KV_LABELS[String(k).toLowerCase()]||k); }
+function kvBlock(v){
+  if(v===null||v===undefined) return '<span class="kvmuted">-</span>';
+  if(Array.isArray(v)){
+    if(!v.length) return '<span class="kvmuted">(빈 목록)</span>';
+    return v.map((x,i)=>`<div class="kv"><span class="kvk">${i+1}</span><span class="kvv">${kvBlock(x)}</span></div>`).join('');
+  }
+  if(typeof v==='object'){
+    const es=Object.entries(v);
+    if(!es.length) return '<span class="kvmuted">(없음)</span>';
+    return es.map(([k,val])=>`<div class="kv"><span class="kvk">${esc(kvLabel(k))}</span><span class="kvv">${kvBlock(val)}</span></div>`).join('');
+  }
+  return esc(String(v));
+}
+function renderKV(s){
+  if(s==null||s==='') return '<span class="kvmuted">(없음)</span>';
+  let v; try{ v=JSON.parse(s); }catch(_){ return '<div class="kvraw">'+esc(s)+'</div>'; }
+  return kvBlock(v);
+}
 function printLogs(){
   if(!loadedLogs.length){ toast('인쇄할 로그가 없습니다',true); return; }
   const actLabel={chat:'채팅',skill:'스킬',login:'로그인',login_failed:'로그인 실패'};
@@ -2529,8 +2566,8 @@ function printLogs(){
     const isSkill=l.action==='skill';
     const detail=(isSkill && (l.request_params||l.response_preview)) ? `
       <tr class="detail"><td colspan="7">
-        <div class="dl">요청 파라미터</div><pre>${esc(prettyJson(l.request_params))||'(없음)'}</pre>
-        <div class="dl">받은 응답</div><pre>${esc(prettyJson(l.response_preview))||'(없음)'}</pre>
+        <div class="dl">📤 무엇을 요청했나</div><div class="kvwrap">${renderKV(l.request_params)}</div>
+        <div class="dl">📥 무슨 데이터를 받았나</div><div class="kvwrap">${renderKV(l.response_preview)}</div>
       </td></tr>` : '';
     return `<tr>
       <td>${esc(fmtDate(l.created_at))}</td>
@@ -2552,8 +2589,12 @@ function printLogs(){
       table{width:100%; border-collapse:collapse;}
       th,td{border:1px solid #ccc; padding:5px 7px; text-align:left; vertical-align:top; font-size:11px;}
       th{background:#f2f2f2; text-transform:uppercase; font-size:9.5px; letter-spacing:.04em;}
-      tr.detail td{background:#fafafa;} .dl{font-weight:700; font-size:9.5px; color:#666; text-transform:uppercase; margin:2px 0;}
-      pre{margin:0 0 7px; padding:6px 8px; background:#fff; border:1px solid #e0e0e0; border-radius:4px; white-space:pre-wrap; word-break:break-word; font:10.5px/1.45 'Courier New',monospace;}
+      tr.detail td{background:#fafafa;} .dl{font-weight:700; font-size:9.5px; color:#666; text-transform:uppercase; margin:6px 0 3px;}
+      .kvwrap{margin:0 0 7px; padding:6px 9px; background:#fff; border:1px solid #e0e0e0; border-radius:4px;}
+      .kv{display:flex; gap:8px; padding:2px 0; border-top:1px solid #eee;} .kv:first-child{border-top:none;}
+      .kvk{flex:0 0 auto; min-width:100px; max-width:170px; font-weight:700; color:#1558b0; font-size:10.5px; word-break:break-word;}
+      .kvv{flex:1; min-width:0; color:#000; font-size:11px; word-break:break-word;}
+      .kvmuted{color:#888;} .kvraw{white-space:pre-wrap; word-break:break-word; font-size:11px;}
       @media print{ body{margin:10mm;} tr{page-break-inside:avoid;} }
     </style></head><body>
     <h1>감사 로그 (스킬·사용 기록)</h1>
