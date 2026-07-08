@@ -191,6 +191,37 @@ def _mt_wrap(text: str, font: str, size: float, maxw: float) -> list:
     return out
 
 
+def _as_str_list(v) -> list:
+    """모델이 배열 대신 dict/숫자/문자열로 넘겨도 안전하게 문자열 리스트로 정규화."""
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x) for x in v if x is not None and str(x).strip()]
+    if isinstance(v, dict):
+        return [str(x) for x in v.values() if x is not None and str(x).strip()]
+    s = str(v).strip()
+    return [s] if s else []
+
+
+def _as_names(v) -> list:
+    """참석자 이름 리스트로 정규화(문자열이면 쉼표/공백 분리)."""
+    if isinstance(v, str):
+        return [s.strip() for s in v.replace(",", " ").split() if s.strip()]
+    return _as_str_list(v)
+
+
+# 정적 양식은 런타임에 바뀌지 않으므로 바이트를 한 번만 읽어 캐시(반복 생성 시 디스크 I/O 절감).
+_MINUTES_TEMPLATE_BYTES = None
+
+
+def _minutes_template_bytes() -> bytes:
+    global _MINUTES_TEMPLATE_BYTES
+    if _MINUTES_TEMPLATE_BYTES is None:
+        with open(_MINUTES_TEMPLATE, "rb") as f:
+            _MINUTES_TEMPLATE_BYTES = f.read()
+    return _MINUTES_TEMPLATE_BYTES
+
+
 def render_minutes_pdf(fields: dict) -> bytes:
     """HP 표준 회의록 양식(HP-QP-750-03) 위에 값을 오버레이해 PDF 생성.
     양식은 정적 PDF(폼 필드 없음)이므로 좌표 기반으로 텍스트를 그려 원본 레이아웃을 그대로 유지한다."""
@@ -214,11 +245,15 @@ def render_minutes_pdf(fields: dict) -> bytes:
             c.drawString(x, _PAGE_H - ybase, str(text))
 
     def block(text, x, ytop, maxw, maxlines, size=9.5, lh=14):
-        if not text:
+        if text is None or text == "":
             return
         c.setFont(reg, size)
+        lines = _mt_wrap(text, reg, size, maxw)
+        if len(lines) > maxlines:  # 1페이지 양식 한계 초과 시 잘림을 명시(무단 누락 방지)
+            lines = lines[:maxlines]
+            lines[-1] = lines[-1][:max(0, len(lines[-1]) - 6)] + " …(이하 생략)"
         y = ytop
-        for ln in _mt_wrap(text, reg, size, maxw)[:maxlines]:
+        for ln in lines:
             c.drawString(x, _PAGE_H - y, ln); y += lh
 
     g = fields.get
@@ -229,12 +264,8 @@ def render_minutes_pdf(fields: dict) -> bytes:
     line(g("writer"), 486, 155)
     line(g("place"), 125, 178)
     line(g("ext_company"), 326, 178)
-    inside = g("inside") or []
-    outside = g("outside") or []
-    if isinstance(inside, str):
-        inside = [s.strip() for s in inside.replace(",", " ").split() if s.strip()]
-    if isinstance(outside, str):
-        outside = [s.strip() for s in outside.replace(",", " ").split() if s.strip()]
+    inside = _as_names(g("inside"))
+    outside = _as_names(g("outside"))
     for i, cx in enumerate([143, 190, 238]):
         if i < len(inside):
             line(inside[i], 0, 201, 8, center=cx)
@@ -244,15 +275,13 @@ def render_minutes_pdf(fields: dict) -> bytes:
     line(g("purpose"), 125, 225)
     block(g("content"), 125, 246, 446, 18, size=9.5, lh=14)
     tops = [513, 542, 572, 601, 631, 660, 690, 719, 749]
-    notes = g("notes") or []
-    if isinstance(notes, str):
-        notes = [notes]
+    notes = _as_str_list(g("notes"))
     for i, item in enumerate(notes[:9]):
         block(item, 124, tops[i], 447, 2, size=9, lh=13.5)
     c.save(); buf.seek(0)
 
     overlay = PdfReader(buf).pages[0]
-    tmpl = PdfReader(_MINUTES_TEMPLATE)
+    tmpl = PdfReader(_io.BytesIO(_minutes_template_bytes()))
     page = tmpl.pages[0]
     page.merge_page(overlay)
     writer = PdfWriter(); writer.add_page(page)
