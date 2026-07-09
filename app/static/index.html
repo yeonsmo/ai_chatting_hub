@@ -672,6 +672,7 @@
       <button id="tabKeys" class="tab-btn" onclick="switchTab('keys')">API 키</button>
       <button id="tabRoutes" class="tab-btn" onclick="switchTab('routes')">모델 라우팅</button>
       <button id="tabInteg" class="tab-btn" onclick="switchTab('integ')">연동·스킬</button>
+      <button id="tabRef" class="tab-btn" onclick="switchTab('ref')">사내 자료실</button>
       <button id="tabConvs" class="tab-btn hidden" onclick="switchTab('convs')">대화 조회</button>
       <button id="tabLogs" class="tab-btn hidden" onclick="switchTab('logs')">사용 로그</button>
     </div>
@@ -2309,11 +2310,55 @@ function auditTapReveal(){
 function closeAdmin(){ document.getElementById('adminModal').classList.add('hidden'); }
 function switchTab(t){
   adminTab=t;
-  ['users','keys','routes','integ','convs','logs'].forEach(x=>{
+  ['users','keys','routes','integ','ref','convs','logs'].forEach(x=>{
     document.getElementById('tab'+x[0].toUpperCase()+x.slice(1)).classList.toggle('on', x===t);
   });
   ({users:loadUsersTab, keys:loadKeysTab, routes:loadRoutesTab, integ:loadIntegTab,
-    convs:loadConvsTab, logs:loadLogsTab})[t]();
+    ref:loadRefTab, convs:loadConvsTab, logs:loadLogsTab})[t]();
+}
+
+/* ----- 사내 자료실 탭 ----- */
+async function loadRefTab(){
+  const body=document.getElementById('adminBody');
+  body.innerHTML='<div style="color:var(--fg-3); font-size:13px;">불러오는 중…</div>';
+  let list=[];
+  try{ list=await api('GET','/reference')||[]; }catch(e){ body.innerHTML='<div style="color:#fca5a5;">'+esc(e.message||'불러오기 실패')+'</div>'; return; }
+  const rows=list.map(r=>`
+    <div class="attach-card" style="align-self:stretch; justify-content:space-between;">
+      <div style="min-width:0;">
+        <div style="font:600 13px/1.3 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">📊 ${esc(r.filename)}</div>
+        <div style="font:400 10.5px/1.4 var(--font-sans); color:var(--fg-3); margin-top:2px;">${fmtSize(r.size_bytes)}${r.sections&&r.sections.length?' · '+esc(r.sections.join(', ')):''}</div>
+      </div>
+      <button class="sm-btn" onclick="refDelete(${r.id}, this)" style="flex:0 0 auto; border-color:rgba(239,68,68,0.3); color:#fca5a5; padding:6px 11px;">삭제</button>
+    </div>`).join('');
+  body.innerHTML=`
+    <div style="font:400 12.5px/1.65 var(--font-sans); color:var(--fg-2); margin-bottom:14px;">
+      회사 기술·규격 자료(엑셀·PDF 등)를 올려두면, 직원이 대화에서 관련 질문을 할 때 AI가 이 자료를 찾아 근거로 답합니다.
+      <span style="color:var(--fg-3);">직원은 자료를 직접 볼 필요 없이 그냥 물어보면 됩니다.</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+      <input id="refFile" type="file" accept=".xlsx,.xls,.pdf,.csv,.txt,.md" style="display:none" onchange="refUpload(this)">
+      <button class="primary-btn" onclick="document.getElementById('refFile').click()" style="padding:9px 16px; border-radius:10px;">＋ 자료 추가</button>
+      <span id="refUpStatus" style="font:500 12px/1.4 var(--font-sans); color:var(--accent);"></span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:9px;">${rows||'<div style="color:var(--fg-3); font-size:13px;">아직 자료가 없습니다. 위에서 추가하세요.</div>'}</div>`;
+}
+async function refUpload(input){
+  const f=input.files&&input.files[0]; input.value='';
+  if(!f) return;
+  const st=document.getElementById('refUpStatus');
+  st.textContent='📤 올리는 중… ('+f.name+')';
+  try{
+    await apiUpload('/reference', f);
+    toast('자료가 추가되었습니다');
+    loadRefTab();
+  }catch(e){ st.textContent=''; toast(e.message||'추가 실패',true); }
+}
+async function refDelete(id, btn){
+  if(!confirm('이 자료를 자료실에서 삭제할까요?')) return;
+  btn.disabled=true;
+  try{ await api('DELETE','/reference/'+id); toast('삭제되었습니다'); loadRefTab(); }
+  catch(e){ btn.disabled=false; toast(e.message||'삭제 실패',true); }
 }
 
 let settingsMeta=null; // {providers:[{key,label,extra_fields}], roles:[{key,label,level}]}

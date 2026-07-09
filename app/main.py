@@ -10,7 +10,8 @@ from app.database import AsyncSessionLocal, init_db
 from app.file_utils import ensure_upload_dir
 from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware, SecurityHeadersMiddleware
 from app.models import User, UserRole
-from app.routers import auth, chat, users, keys, files, projects, admin, settings_admin, minutes
+from app.routers import (auth, chat, users, keys, files, projects, admin,
+                         settings_admin, minutes, reference)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -36,6 +37,12 @@ async def lifespan(app: FastAPI):
                 db.add(superadmin)
                 await db.commit()
                 print("[INIT] superadmin 계정 생성 완료 (초기 비밀번호는 .env에 설정한 값)")
+
+        # 사내 자료실 기본자료 시드(파일명 기준 중복 방지)
+        try:
+            await reference.seed_reference_docs(db)
+        except Exception as e:  # noqa: BLE001 — 시드 실패가 기동을 막지 않도록
+            print(f"[INIT][경고] 자료실 시드 실패: {e}")
 
     yield
 
@@ -67,6 +74,7 @@ app.include_router(minutes.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(settings_admin.router, prefix="/api")
+app.include_router(reference.router, prefix="/api")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

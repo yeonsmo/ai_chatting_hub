@@ -19,10 +19,25 @@ from app.providers import (run_chat, run_chat_stream, run_image, friendly_api_er
 from app.roles import role_level, has_min_role
 from app.routers.files import to_response as attachment_response
 from app.skills_runtime import execute_skill, anthropic_tool_def, openai_tool_def
-from app import gen_tools
+from app import gen_tools, knowledge
+from app.routers import reference
 from app.schemas import MessageCreate, ChatResponse, ConversationResponse, ConversationUpdate, MessageResponse
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+_SEARCH_DOCS_DESC = (
+    "사내 자료실(회사 기술·규격 자료: 배관 규격/치수/중량, 플랜지·볼트 규격, 재질·인장강도 등)에서 "
+    "질문과 관련된 표/구획을 검색한다. 배관·규격·수치 관련 질문이면 추측하지 말고 이 도구로 자료를 "
+    "찾아 그 값을 근거로 답하라. query에는 핵심 키워드를 넣는다(예: '8인치 sch40 무게', "
+    "'ANSI 300 플랜지 볼트 수', '스테인리스 인장강도')."
+)
+_SEARCH_DOCS_SCHEMA = {"type": "object",
+                       "properties": {"query": {"type": "string", "description": "검색 키워드/질문"}},
+                       "required": ["query"]}
+SEARCH_COMPANY_DOCS_ANTHROPIC = {"name": "search_company_docs", "description": _SEARCH_DOCS_DESC,
+                                 "input_schema": _SEARCH_DOCS_SCHEMA}
+SEARCH_COMPANY_DOCS_OPENAI = {"type": "function", "function": {
+    "name": "search_company_docs", "description": _SEARCH_DOCS_DESC, "parameters": _SEARCH_DOCS_SCHEMA}}
 
 CLAUDE_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024     # Claude 이미지 블록 제한
@@ -138,30 +153,34 @@ def build_openai_current_content(content: str, attachments: list[Attachment]):
 
 
 async def build_system_prompt(db: AsyncSession, project: Project | None) -> str | None:
-    if not project:
-        return None
     parts = []
-    if project.instructions and project.instructions.strip():
-        parts.append(f"[프로젝트 지침]\n{project.instructions.strip()}")
+    if project:
+        if project.instructions and project.instructions.strip():
+            parts.append(f"[프로젝트 지침]\n{project.instructions.strip()}")
 
-    result = await db.execute(
-        select(Attachment)
-        .where(Attachment.project_id == project.id)
-        .order_by(Attachment.id.asc())
-    )
-    total = 0
-    knowledge = []
-    for att in result.scalars().all():
-        if not att.text_content:
-            continue
-        remain = PROJECT_TOTAL_CHARS - total
-        if remain <= 0:
-            break
-        body = att.text_content[:min(PROJECT_FILE_CHARS, remain)]
-        total += len(body)
-        knowledge.append(f"<파일 이름=\"{att.filename}\">\n{body}\n</파일>")
-    if knowledge:
-        parts.append("[프로젝트 지식 파일]\n" + "\n\n".join(knowledge))
+        result = await db.execute(
+            select(Attachment)
+            .where(Attachment.project_id == project.id)
+            .order_by(Attachment.id.asc())
+        )
+        total = 0
+        knowledge = []
+        for att in result.scalars().all():
+            if not att.text_content:
+                continue
+            remain = PROJECT_TOTAL_CHARS - total
+            if remain <= 0:
+                break
+            body = att.text_content[:min(PROJECT_FILE_CHARS, remain)]
+            total += len(body)
+            knowledge.append(f"<파일 이름=\"{att.filename}\">\n{body}\n</파일>")
+        if knowledge:
+            parts.append("[프로젝트 지식 파일]\n" + "\n\n".join(knowledge))
+
+    # 사내 자료실 색인(프로젝트 유무와 무관하게 항상 안내 — 실제 내용은 도구로 검색)
+    idx = await reference.cached_reference_index(db)
+    if idx:
+        parts.append(idx)
 
     return "\n\n".join(parts) if parts else None
 
@@ -389,6 +408,19 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
                 log.status = "error"; log.detail = str(e)[:500]
                 log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
                 raise
+        # 사내 자료실 검색(회사 참고자료에서 근거 찾기)
+        if name == "search_company_docs":
+            query = str(params.get("query") or "").strip()
+            t0 = time.monotonic()
+            log = UsageLog(user_id=current_user.id, username=current_user.username,
+                           action="skill", conversation_id=conversation.id,
+                           model="search_company_docs", provider="자료실", client_ip=ip,
+                           request_params=query[:4000])
+            docs = await reference.load_reference_docs(db)
+            result = knowledge.search_reference(docs, query) if query else "검색어가 비어 있습니다."
+            log.response_preview = result[:8000]
+            log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
+            return result
         # 외부 연동 스킬
         skill = skill_map.get(name)
         if not skill:
@@ -419,13 +451,19 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
                    "create_estimate": "견적서(HP 양식) 생성",
                    "create_transaction_statement": "거래명세서(HP 양식) 생성",
                    "create_overtime_request": "연장근로신청서(HP 양식) 생성",
-                   "create_expense_report": "지출결의서(HP 양식) 생성"})
+                   "create_expense_report": "지출결의서(HP 양식) 생성",
+                   "search_company_docs": "사내 자료실 검색"})
+    # 사내 자료실에 자료가 있으면 검색 도구 노출
+    extra_anth, extra_oai = [], []
+    if await reference.has_reference_docs(db):
+        extra_anth.append(SEARCH_COMPANY_DOCS_ANTHROPIC)
+        extra_oai.append(SEARCH_COMPANY_DOCS_OPENAI)
     ctx.llm_messages = llm_messages
     ctx.system_prompt = system_prompt
     ctx.gen_atts = gen_atts
     ctx.tool_ctx = ToolContext(
-        anthropic_tools=gen_tools.anthropic_defs() + [anthropic_tool_def(s) for s in skills],
-        openai_tools=gen_tools.openai_defs() + [openai_tool_def(s) for s in skills],
+        anthropic_tools=gen_tools.anthropic_defs() + extra_anth + [anthropic_tool_def(s) for s in skills],
+        openai_tools=gen_tools.openai_defs() + extra_oai + [openai_tool_def(s) for s in skills],
         titles=titles,
         executor=tool_executor,
     )
