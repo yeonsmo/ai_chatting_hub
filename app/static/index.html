@@ -510,9 +510,15 @@
         <div id="projSection">
           <div style="padding:8px 6px 5px; display:flex; align-items:center; justify-content:space-between;">
             <span class="sb-label">프로젝트</span>
-            <button onclick="createProjectPrompt()" title="새 프로젝트" class="mini-act" style="color:var(--accent);">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
+            <span style="display:flex; align-items:center; gap:2px;">
+              <input id="skillFile" type="file" accept=".skill,.zip" style="display:none" onchange="importSkill(this)">
+              <button onclick="document.getElementById('skillFile').click()" title="에이전트 스킬(.skill) 가져오기 → 프로젝트로 등록" class="mini-act" style="color:var(--fg-3);">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </button>
+              <button onclick="createProjectPrompt()" title="새 프로젝트" class="mini-act" style="color:var(--accent);">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </span>
           </div>
           <div id="projList"></div>
         </div>
@@ -1943,6 +1949,17 @@ document.addEventListener('paste', e=>{
 });
 
 /* ============ 프로젝트 ============ */
+async function importSkill(input){
+  const f=input.files&&input.files[0]; input.value='';
+  if(!f) return;
+  toast('스킬 가져오는 중…');
+  try{
+    const p=await apiUpload('/projects/import-skill', f);  // SKILL.md→지침, references→지식파일
+    await loadProjects();
+    toast('스킬을 프로젝트로 추가했어요: '+p.name);
+    openProject(p.id);
+  }catch(e){ toast('스킬 가져오기 실패: '+(e.message||''),true); }
+}
 async function createProjectPrompt(){
   const vals=await openPrompt('새 프로젝트',[
     {key:'name',label:'프로젝트 이름',value:''},
