@@ -297,6 +297,12 @@ def render_minutes_pdf(fields: dict) -> bytes:
 _ESTIMATE_TEMPLATE = os.path.join(_FORM_DIR, "estimate.pdf")
 _ESTIMATE_SIMPLE_TEMPLATE = os.path.join(_FORM_DIR, "estimate_simple.pdf")
 _STATEMENT_TEMPLATE = os.path.join(_FORM_DIR, "transaction_statement.pdf")
+_OVERTIME_TEMPLATE = os.path.join(_FORM_DIR, "overtime_request.pdf")
+_EXPENSE_TEMPLATE = os.path.join(_FORM_DIR, "expense_report.pdf")
+
+# 콤보박스 허용값(원본 양식에 내장된 선택지 그대로). 앞뒤 공백까지 원본과 일치해야 채워진다.
+OT_DEPARTMENTS = [" 경영지원", "기술엔지니어링", "연구개발전담부서"]
+EXPENSE_PROOFS = ["간이영수증", "기타", "분실", "세금계산서", "영수증", "카드영수증", "현금영수증"]
 
 _FORM_TEMPLATE_BYTES: dict = {}
 
@@ -330,26 +336,61 @@ def _num(v):
         return None
 
 
-def _fill_acroform(template_path: str, values: dict) -> bytes:
-    """AcroForm 텍스트 필드를 이름 기준으로 채워 PDF 바이트 반환.
-    값이 None/빈문자열인 필드는 건너뛰어 원본 기본값/빈칸을 유지한다."""
+def _fill_acroform(template_path: str, values: dict, overlays=None) -> bytes:
+    """AcroForm 필드를 이름 기준으로 채워 PDF 바이트 반환.
+    - 텍스트/콤보박스: 값이 있으면 문자열로 기입(콤보는 원본 선택지와 정확히 일치해야 함)
+    - 체크박스: 값이 참이면 체크
+    - 도장/QR/서명 등 버튼 필드는 건드리지 않음
+    값이 None/빈문자열인 필드는 건너뛰어 원본 기본값/빈칸을 유지한다.
+    overlays: [{page, text, x|right, y, size}] — 폼 필드가 없는 자리(예: 합계)에 숫자 텍스트를 그린다."""
     import fitz  # PyMuPDF (지연 임포트)
 
     doc = fitz.open(stream=_form_template_bytes(template_path), filetype="pdf")
     try:
         for page in doc:
             for w in (page.widgets() or []):
-                if not (w.field_type_string or "").lower().startswith("text"):
-                    continue  # 체크박스/버튼/도장·QR 필드는 건드리지 않음
-                v = values.get(w.field_name)
-                if v is None or v == "":
+                name = w.field_name
+                if name not in values:
                     continue
-                w.field_value = str(v)
-                w.update()
+                v = values[name]
+                ftype = (w.field_type_string or "")
+                try:
+                    if ftype == "CheckBox":
+                        if v:
+                            w.field_value = True
+                            w.update()
+                    elif ftype in ("Text", "ComboBox", "ListBox"):
+                        if v is None or v == "":
+                            continue
+                        w.field_value = str(v)
+                        w.update()
+                except (ValueError, RuntimeError):
+                    continue  # 한 필드 실패가 전체 생성을 막지 않도록
+        for ov in (overlays or []):
+            page = doc[ov.get("page", 0)]
+            text = str(ov.get("text") or "")
+            if not text:
+                continue
+            x = ov.get("x")
+            if x is None and ov.get("right") is not None:  # 우측 정렬(합계 등)
+                x = ov["right"] - fitz.get_text_length(text, fontname="helv", fontsize=ov.get("size", 10))
+            page.insert_text((x or 0, ov["y"]), text, fontsize=ov.get("size", 10),
+                             fontname="helv", color=(0.09, 0.09, 0.11))
         out = doc.tobytes()
     finally:
         doc.close()
     return out
+
+
+def _combo_match(value, options):
+    """콤보박스 값을 원본 선택지로 정규화(공백 무시 비교). 못 맞추면 None."""
+    s = str(value or "").strip()
+    if not s:
+        return None
+    for o in options:
+        if o.strip() == s:
+            return o
+    return None
 
 
 def _line_items(items, max_rows: int):
@@ -442,6 +483,83 @@ def render_transaction_statement_pdf(data: dict) -> bytes:
             f"비고{i}": r["note"],
         })
     return _fill_acroform(_STATEMENT_TEMPLATE, vals)
+
+
+def _hhmm(t):
+    """'18:30' / '18시30분' / '1830' → (시, 분). 파싱 실패하면 None."""
+    m = re.match(r"\s*(\d{1,2})\s*[:시]?\s*(\d{2})?\s*분?\s*$", str(t or ""))
+    if not m:
+        return None
+    h = int(m.group(1))
+    mm = int(m.group(2) or 0)
+    if h > 23 or mm > 59:
+        return None
+    return h, mm
+
+
+def render_overtime_request_pdf(data: dict) -> bytes:
+    """HP 연장 근로 신청서 AcroForm을 채워 PDF 생성.
+    총 연장근로시간은 시작/종료 시간으로 자동계산(명시값이 있으면 그대로 사용)."""
+    g = data.get
+    total = g("total_hours")
+    if not total:
+        a, b = _hhmm(g("start_time")), _hhmm(g("end_time"))
+        if a and b:
+            mins = (b[0] * 60 + b[1]) - (a[0] * 60 + a[1])
+            if mins > 0:
+                total = f"{mins // 60}시간" + (f" {mins % 60}분" if mins % 60 else "")
+    vals = {
+        "신청일자": g("apply_date"), "신청자": g("applicant"), "입사일": g("hire_date"),
+        "부서": _combo_match(g("dept"), OT_DEPARTMENTS), "직위": g("position"), "사번": g("emp_no"),
+        "관리번호": g("mgmt_no"), "승인번호": g("approval_no"),
+        "작성일자": g("write_date"), "결제일자": g("approve_date"),
+        "연장 근무 시작시간": g("start_time"),
+        "연장 근무 종료시간(최대 4시간이상 X)": g("end_time"),
+        "총 연장 근로시간": total,
+        "연장근무 사유": g("reason"), "특이 사항": g("remarks"),
+        "작성자 성명": g("writer") or g("applicant"),
+    }
+    return _fill_acroform(_OVERTIME_TEMPLATE, vals)
+
+
+def render_expense_report_pdf(data: dict) -> bytes:
+    """HP 지출결의서 AcroForm을 채워 PDF 생성. 지출항목 최대 8행, 금액 합계는 자동계산해
+    합계 칸(폼 필드 없음)에 오버레이한다. 지급방법 체크박스/증빙구분 콤보 처리."""
+    g = data.get
+    vals = {
+        "작성자성명": g("writer_name"), "작성자직급": g("writer_rank"),
+        "작성자사번": g("writer_empno"), "기안일자": g("draft_date"),
+        "관리번호": g("mgmt_no"), "승인번호": g("approval_no"),
+        "지출 제목": g("title"), "지출 사유": g("reason"),
+        "급여수령계좌은행": g("bank"), "급여수령계좌번호": g("account"),
+        "작성자 성명": g("writer_name"),  # 예금주 자리
+        "특기사항_증빙구분이 기타, 분실일 경우 사유 필수 작성": g("special_notes"),
+    }
+    total = 0.0
+    for i, it in enumerate((g("items") or [])[:8]):
+        if not isinstance(it, dict):
+            it = {"item": str(it)}
+        j = i  # 항목명은 1부터(지출항목1), 나머지 열은 0부터(.0)로 이름이 다름
+        amt = _num(it.get("amount"))
+        if amt is not None:
+            total += amt
+        vals[f"지출항목{i + 1}"] = it.get("item")
+        vals[f"(구입처,지출처)거래처.{j}"] = it.get("vendor")
+        vals[f"적요,기타사항,계정과목.{j}"] = it.get("memo")
+        vals[f"금 액.{j}"] = _won(amt) if amt is not None else None
+        vals[f"증빙구분.{j}"] = _combo_match(it.get("proof"), EXPENSE_PROOFS)
+        vals[f"관련프로젝트.{j}"] = it.get("project")
+        vals[f"비고.{j}"] = it.get("note")
+    # 지급방법 체크박스(하나 선택)
+    cbmap = {"계좌이체": "계좌이체체크박스", "현금": "현금수령희망시 체크박스",
+             "법인카드": "법인카드 지출시 체크박스"}
+    pay_cb = cbmap.get(str(g("pay_method") or "").strip())
+    if pay_cb:
+        vals[pay_cb] = True
+    overlays = []
+    if total > 0:  # 합계 칸엔 폼 필드가 없어 숫자를 우측정렬로 그린다("원(부가세 포함)" 앞)
+        overlays.append({"page": 0, "text": _won(total), "right": 424, "y": 521, "size": 10})
+    return _fill_acroform(_EXPENSE_TEMPLATE, vals, overlays)
 
 
 # ---------------- XLSX ----------------
