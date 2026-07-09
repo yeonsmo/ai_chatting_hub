@@ -131,7 +131,7 @@ async def transcribe_status(
 # ---------------- 회의록 생성 (구조화 출력, 모델 고정) ----------------
 
 async def _resolve_minutes_route(db: AsyncSession) -> ModelRoute:
-    """회의록 정리용 모델 라우팅 결정. 설정 key(기본 gpt-5-pro) → 없으면 GPT 계열 →
+    """회의록 정리용 모델 라우팅 결정. 설정 key(기본 gpt-5) → 없으면 GPT 계열(빠른 것 우선) →
     그래도 없으면 아무 채팅 라우팅으로 대체. 도구 호출이 아니라 구조화 출력이므로
     어떤 채팅 모델이든 동작한다."""
     want = (settings.minutes_model_key or "").strip()
@@ -140,12 +140,14 @@ async def _resolve_minutes_route(db: AsyncSession) -> ModelRoute:
         if r and r.enabled and (r.kind or "chat") == "chat":
             return r
     rows = (await db.execute(select(ModelRoute).where(ModelRoute.enabled == True))).scalars().all()  # noqa: E712
-    for cand in rows:  # GPT 계열 우선
-        if cand.provider in OPENAI_FAMILY and (cand.kind or "chat") == "chat" and "gpt" in (cand.key or "").lower():
-            return cand
-    for cand in rows:  # 그 외 채팅 모델
-        if (cand.kind or "chat") == "chat":
-            return cand
+    chats = [c for c in rows if (c.kind or "chat") == "chat"]
+    gpts = [c for c in chats if c.provider in OPENAI_FAMILY and "gpt" in (c.key or "").lower()]
+    if gpts:
+        # 속도 우선: 'pro'/'codex'(느린 계열)는 뒤로, 나머지 먼저
+        gpts.sort(key=lambda c: (("pro" in c.key.lower() or "codex" in c.key.lower()), c.key))
+        return gpts[0]
+    if chats:
+        return chats[0]
     raise HTTPException(status_code=500, detail="회의록 생성용 AI 모델이 등록되어 있지 않습니다. 관리자에게 문의하세요.")
 
 

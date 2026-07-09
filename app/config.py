@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     whisper_compute: str = "int8"        # cpu=int8 권장, cuda면 "float16"
     whisper_language: str = "ko"
 
-    # 회의록 정리에 사용할 모델(라우팅 key). 기본 가비아 GPT Pro. 없으면 자동 대체.
-    minutes_model_key: str = "gpt-5-pro"
+    # 회의록 정리에 사용할 모델(라우팅 key). 요약 작업이라 Pro(느림)보다 표준 GPT가
+    # 속도/품질 균형이 좋다. 없으면 자동 대체. 최상위 품질을 원하면 gpt-5-pro로 변경.
+    minutes_model_key: str = "gpt-5"
 
     # 대화 중 "이미지 그려줘"를 자동 처리할 이미지 모델(라우팅 key). 비우면 kind=image 첫 라우팅 사용.
     image_model_key: str = ""
