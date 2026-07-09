@@ -1,4 +1,7 @@
+import io
 import os
+import re
+import zipfile
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -136,6 +139,93 @@ async def delete_project(
 
 
 # ---------- 지식 파일 ----------
+
+_MAX_SKILL_FILES = 80
+_MAX_SKILL_UNCOMPRESSED = 8 * 1024 * 1024   # 압축 해제 총량 상한(zip bomb 방지)
+
+
+def _parse_skill_frontmatter(md: str):
+    """SKILL.md 프론트매터(--- name/description ---)와 본문 분리."""
+    name = desc = ""
+    body = md
+    m = re.match(r"^﻿?---\s*\n(.*?)\n---\s*\n?(.*)$", md, re.S)
+    if m:
+        fm, body = m.group(1), m.group(2)
+        for line in fm.splitlines():
+            mm = re.match(r"\s*(name|description)\s*:\s*(.*)$", line)
+            if mm:
+                val = mm.group(2).strip().strip("'\"")
+                if mm.group(1) == "name":
+                    name = val
+                else:
+                    desc = val
+    return name, desc, body.strip()
+
+
+@router.post("/import-skill", response_model=ProjectResponse)
+async def import_skill(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """에이전트 스킬(.skill = SKILL.md + references 묶음 zip)을 프로젝트로 가져온다.
+    SKILL.md 본문 → 프로젝트 지침(시스템 프롬프트), references/*.md → 지식 파일."""
+    data = await read_upload_or_413(request, file)
+    if not data:
+        raise HTTPException(status_code=400, detail="빈 파일은 가져올 수 없습니다")
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail=".skill(zip) 형식이 아닙니다")
+
+    infos = [i for i in zf.infolist() if not i.is_dir()]
+    if not infos:
+        raise HTTPException(status_code=400, detail="빈 스킬입니다")
+    if len(infos) > _MAX_SKILL_FILES or sum(i.file_size for i in infos) > _MAX_SKILL_UNCOMPRESSED:
+        raise HTTPException(status_code=400, detail="스킬 파일이 너무 크거나 많습니다")
+
+    skill_info = next((i for i in infos if i.filename.split("/")[-1].lower() == "skill.md"), None)
+    if not skill_info:
+        raise HTTPException(status_code=400, detail="SKILL.md가 없습니다(.skill 형식을 확인하세요)")
+
+    def _text(info) -> str:
+        try:
+            return zf.read(info).decode("utf-8", "replace")
+        except Exception:
+            return ""
+
+    name, desc, body = _parse_skill_frontmatter(_text(skill_info))
+    folder = skill_info.filename.split("/")[0] if "/" in skill_info.filename else ""
+    name = (name or folder or "가져온 스킬").strip()[:120]
+
+    project = Project(user_id=current_user.id, name=name,
+                      description=(desc or "에이전트 스킬에서 가져옴")[:500],
+                      instructions=(body or _text(skill_info)))
+    db.add(project)
+    await db.flush()
+
+    # 참고 파일(references/*.md 등 텍스트)을 지식 파일로 첨부
+    for info in infos:
+        if info is skill_info:
+            continue
+        base = os.path.basename(info.filename)[:255]
+        if not base.lower().endswith((".md", ".markdown", ".txt")):
+            continue
+        raw = zf.read(info)
+        txt = raw.decode("utf-8", "replace")
+        if not txt.strip():
+            continue
+        stored = new_stored_name(base)
+        with open(stored_path(stored), "wb") as f:
+            f.write(raw)
+        db.add(Attachment(user_id=current_user.id, project_id=project.id, filename=base,
+                          content_type="text/markdown", size_bytes=len(raw), stored_name=stored,
+                          text_content=txt[:200_000]))
+    await db.commit()
+    await db.refresh(project)
+    return await _to_response(project, db)
+
 
 @router.post("/{project_id}/files", response_model=AttachmentResponse)
 async def upload_project_file(
