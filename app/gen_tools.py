@@ -101,16 +101,37 @@ TOOLS = {CREATE_DOCUMENT["name"]: CREATE_DOCUMENT,
          CREATE_SPREADSHEET["name"]: CREATE_SPREADSHEET,
          CREATE_MEETING_MINUTES["name"]: CREATE_MEETING_MINUTES}
 
+# 실행이 async/DB가 필요해 run_tool로 처리하지 않고 chat.py에서 직접 실행하는 도구.
+# 스키마(정의)만 여기서 노출한다.
+GENERATE_IMAGE = {
+    "name": "generate_image",
+    "description": (
+        "사용자가 이미지·그림·삽화·일러스트·로고 등 '이미지 생성'을 요청할 때 호출한다. "
+        "현재 어떤 모델과 대화 중이든 이 도구로 이미지를 만들 수 있으므로, 사용자가 모델을 "
+        "따로 바꾸지 않아도 된다. 생성된 이미지는 사용자 대화 화면에 바로 표시·다운로드된다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "prompt": {"type": "string", "description": "생성할 이미지에 대한 구체적 묘사(영문/한글 무관)"},
+        },
+        "required": ["prompt"],
+    },
+}
+
+# 도구 정의 노출용(run_tool 대상 + async 직접 실행 대상)
+_ALL_DEFS = list(TOOLS.values()) + [GENERATE_IMAGE]
+
 
 def anthropic_defs() -> list:
     return [{"name": t["name"], "description": t["description"], "input_schema": t["params"]}
-            for t in TOOLS.values()]
+            for t in _ALL_DEFS]
 
 
 def openai_defs() -> list:
     return [{"type": "function", "function": {
         "name": t["name"], "description": t["description"], "parameters": t["params"]}}
-        for t in TOOLS.values()]
+        for t in _ALL_DEFS]
 
 
 def run_tool(name: str, params: dict):

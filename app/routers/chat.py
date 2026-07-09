@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.file_utils import stored_path, write_bytes
@@ -334,6 +335,40 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
     gen_atts: list[Attachment] = []
 
     async def tool_executor(name: str, params: dict) -> str:
+        # 이미지 생성 도구(대화 중 "그려줘"): 모델을 바꾸지 않아도 자동으로 이미지 라우팅 호출
+        if name == "generate_image":
+            prompt = str(params.get("prompt") or "").strip()
+            if not prompt:
+                raise ValueError("이미지로 만들 내용을 알려주세요")
+            img_route = None
+            want = (settings.image_model_key or "").strip()
+            if want:
+                img_route = (await db.execute(select(ModelRoute).where(ModelRoute.key == want))).scalar_one_or_none()
+            if not img_route or not img_route.enabled or (img_route.kind or "chat") != "image":
+                rows = (await db.execute(select(ModelRoute).where(ModelRoute.enabled == True))).scalars().all()  # noqa: E712
+                img_route = next((r for r in rows if (r.kind or "chat") == "image"), None)
+            if not img_route:
+                raise ValueError("이미지 생성 모델이 등록되어 있지 않습니다(관리자: 모델 라우팅에 kind=image 추가).")
+            t0 = time.monotonic()
+            log = UsageLog(user_id=current_user.id, username=current_user.username,
+                           action="generate", conversation_id=conversation.id,
+                           model=img_route.key, provider=img_route.provider, client_ip=ip)
+            try:
+                images = await run_image(db, img_route.provider, img_route.provider_model_id, prompt)
+                base = gen_tools.safe_filename(prompt[:40], "생성이미지", "png")
+                for i, img in enumerate(images):
+                    stored = write_bytes(img.data, (img.content_type.split("/")[-1] or "png").split(";")[0][:5])
+                    fn = base if len(images) == 1 else base.replace(".png", f"_{i+1}.png")
+                    att = Attachment(user_id=current_user.id, filename=fn, content_type=img.content_type,
+                                     size_bytes=len(img.data), stored_name=stored, kind="generated",
+                                     origin="generate_image")
+                    db.add(att); await db.flush(); gen_atts.append(att)
+                log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
+                return f"이미지를 생성했습니다({len(images)}장). 사용자 대화 화면에 바로 표시됩니다."
+            except Exception as e:
+                log.status = "error"; log.detail = str(e)[:500]
+                log.duration_ms = int((time.monotonic() - t0) * 1000); db.add(log)
+                raise
         # 내장 생성 도구
         if name in gen_tools.TOOLS:
             t0 = time.monotonic()
@@ -380,7 +415,7 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
 
     titles = {s.name: s.title for s in skills}
     titles.update({"create_document": "문서 생성", "create_spreadsheet": "엑셀 생성",
-                   "create_meeting_minutes": "회의록(HP 양식) 생성"})
+                   "create_meeting_minutes": "회의록(HP 양식) 생성", "generate_image": "이미지 생성"})
     ctx.llm_messages = llm_messages
     ctx.system_prompt = system_prompt
     ctx.gen_atts = gen_atts
