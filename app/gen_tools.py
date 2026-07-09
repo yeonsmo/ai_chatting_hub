@@ -97,9 +97,84 @@ CREATE_MEETING_MINUTES = {
     },
 }
 
+_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "품명/항목(거래명세서는 '일자 품명'도 가능)"},
+        "unit": {"type": "string", "description": "단위(식/부/EA/개 등)"},
+        "qty": {"type": "number", "description": "수량"},
+        "price": {"type": "number", "description": "단가(원)"},
+        "amount": {"type": "number", "description": "공급가액. 생략하면 수량×단가로 자동계산"},
+        "note": {"type": "string", "description": "비고(선택)"},
+    },
+    "required": ["name"],
+}
+
+CREATE_ESTIMATE = {
+    "name": "create_estimate",
+    "description": (
+        "HP엔지니어링 표준 '견적서'(회사 양식) PDF를 생성한다. 사용자가 견적서 작성을 요청하면 "
+        "대화하며 거래처·품목·단가 등을 함께 정리한 뒤 이 도구를 호출한다. 공급가액·세액(10%)·합계는 "
+        "수량과 단가로 자동계산되므로 직접 계산해 넣지 말 것. 아는 값만 채우고 모르는 항목은 비워 둔다"
+        "(지어내지 말 것). 간소화된 양식이 필요하면 simple=true(간이견적서)."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "simple": {"type": "boolean", "description": "간이견적서 양식이면 true(기본 false=정식 견적서)"},
+            "client_name": {"type": "string", "description": "거래처(회사) 이름"},
+            "client_manager": {"type": "string", "description": "거래처 담당자 성함"},
+            "client_contact": {"type": "string", "description": "거래처 담당자 연락처"},
+            "client_fax": {"type": "string", "description": "거래처 팩스번호"},
+            "estimate_name": {"type": "string", "description": "견적 이름/건명"},
+            "target_spec": {"type": "string", "description": "시험 대상품목 명 또는 규격(규정)"},
+            "hp_manager": {"type": "string", "description": "HP엔지니어링 담당자 성함"},
+            "hp_phone": {"type": "string", "description": "HP엔지니어링 담당자 사내 직통번호"},
+            "hp_email": {"type": "string", "description": "HP엔지니어링 담당자 이메일"},
+            "estimate_no": {"type": "string", "description": "견적번호(있을 때만)"},
+            "issue_date": {"type": "string", "description": "견적서 발행일(예: 2026-07-09)"},
+            "items": {"type": "array", "items": _ITEM_SCHEMA, "description": "견적 품목(최대 11개)"},
+            "work_deadline": {"type": "string", "description": "작업완료 기한"},
+            "delivery_place": {"type": "string", "description": "인도장소"},
+            "confirm_notes": {"type": "string", "description": "확인/협의 사항"},
+            "payment_date": {"type": "string", "description": "대금 결제일"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["client_name", "items"],
+    },
+}
+
+CREATE_TRANSACTION_STATEMENT = {
+    "name": "create_transaction_statement",
+    "description": (
+        "HP엔지니어링 표준 '거래명세서'(회사 양식) PDF를 생성한다. 사용자가 거래명세서 작성을 요청하면 "
+        "대화하며 거래처·작업명·품목 등을 정리한 뒤 이 도구를 호출한다. 공급가액·세액(10%)·합계는 "
+        "수량과 단가로 자동계산되므로 직접 계산하지 말 것. 아는 값만 채우고 모르는 항목은 비워 둔다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "client_name": {"type": "string", "description": "거래처(회사) 이름"},
+            "client_manager": {"type": "string", "description": "거래처 담당자 이름"},
+            "work_name": {"type": "string", "description": "작업명(시험명)"},
+            "statement_no": {"type": "string", "description": "거래명세번호(있을 때만)"},
+            "items": {"type": "array", "items": _ITEM_SCHEMA,
+                      "description": "거래 품목(최대 15개). name에 '일자 품명'을 함께 적을 수 있음"},
+            "work_done": {"type": "string", "description": "작업완료 현황/시기"},
+            "delivery_done": {"type": "string", "description": "인도완료 일자/현황"},
+            "attach_date": {"type": "string", "description": "거래명세서 첨부일"},
+            "payment_terms": {"type": "string", "description": "대금지불 조건(예: 익월 20일 지급)"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["client_name", "items"],
+    },
+}
+
 TOOLS = {CREATE_DOCUMENT["name"]: CREATE_DOCUMENT,
          CREATE_SPREADSHEET["name"]: CREATE_SPREADSHEET,
-         CREATE_MEETING_MINUTES["name"]: CREATE_MEETING_MINUTES}
+         CREATE_MEETING_MINUTES["name"]: CREATE_MEETING_MINUTES,
+         CREATE_ESTIMATE["name"]: CREATE_ESTIMATE,
+         CREATE_TRANSACTION_STATEMENT["name"]: CREATE_TRANSACTION_STATEMENT}
 
 # 실행이 async/DB가 필요해 run_tool로 처리하지 않고 chat.py에서 직접 실행하는 도구.
 # 스키마(정의)만 여기서 노출한다.
@@ -154,5 +229,16 @@ def run_tool(name: str, params: dict):
     if name == "create_meeting_minutes":
         data = doc_gen.render_minutes_pdf(params or {})
         fn = safe_filename(params.get("filename") or params.get("purpose"), "회의록", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_estimate":
+        data = doc_gen.render_estimate_pdf(params or {})
+        default = "간이견적서" if (params or {}).get("simple") else "견적서"
+        fn = safe_filename(params.get("filename") or params.get("estimate_name")
+                           or params.get("client_name"), default, "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_transaction_statement":
+        data = doc_gen.render_transaction_statement_pdf(params or {})
+        fn = safe_filename(params.get("filename") or params.get("work_name")
+                           or params.get("client_name"), "거래명세서", "pdf")
         return data, doc_gen.PDF_CT, "pdf", fn
     raise ValueError(f"알 수 없는 생성 도구: {name}")
