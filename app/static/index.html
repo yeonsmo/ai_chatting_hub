@@ -752,13 +752,13 @@
       <div>
         <label class="mt-lb" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
           <span>회의 내용 · 메모 / 녹취 <span style="color:var(--danger);">*</span></span>
-          <span style="display:flex; align-items:center; gap:6px;">
+          <span style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
             <input id="mtAudioFile" type="file" accept="audio/*,video/mp4,.m4a,.amr" style="display:none" onchange="minutesTranscribe(this)">
-            <button type="button" class="sm-btn" onclick="document.getElementById('mtAudioFile').click()" title="회의 녹음 파일을 올려 자동 전사(서버에서 처리, 원본 보관)" style="padding:5px 9px; font-size:11px; display:flex; align-items:center; gap:4px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
-              녹음 전사
+            <button id="mtRecBtn" type="button" class="sm-btn" onclick="toggleMeetingRec()" title="앱에서 바로 회의를 녹음합니다(길이 제한 없음). 정지하면 자동 전사되고 원본은 보관됩니다." style="padding:5px 10px; font-size:11px; display:flex; align-items:center; gap:5px;">
+              <span style="width:9px; height:9px; border-radius:50%; background:#ef4444; display:inline-block;"></span>녹음
             </button>
-            <button id="mtMicBtn" type="button" class="comp-icon" onclick="minutesMic()" title="실시간 음성 받아쓰기(크롬)" style="width:30px; height:30px;">
+            <button type="button" class="sm-btn" onclick="document.getElementById('mtAudioFile').click()" title="이미 녹음된 오디오 파일을 올려 전사" style="padding:5px 9px; font-size:11px;">📁 파일</button>
+            <button id="mtMicBtn" type="button" class="comp-icon" onclick="minutesMic()" title="실시간 받아쓰기(텍스트만, 크롬)" style="width:30px; height:30px;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
             </button>
           </span>
@@ -1426,18 +1426,20 @@ function minutesMic(){
   _mtRecog.onerror=(e)=>stop((e&&e.error==='not-allowed')?'⚠ 마이크 권한을 허용해주세요':'⏹ 녹음 정지됨');
   try{ _mtRecog.start(); }catch(_){ stop('⏹ 녹음 정지됨'); }
 }
-let _mtTransBusy=false;
-async function minutesTranscribe(input){
+function minutesTranscribe(input){
   const f=input.files&&input.files[0]; input.value='';   // 같은 파일 재선택 허용
-  if(!f) return;
+  if(f) _doTranscribe(f, f.name);
+}
+let _mtTransBusy=false;
+async function _doTranscribe(fileOrBlob, name){
   if(_mtTransBusy){ toast('이미 전사 중입니다',true); return; }
   const st=document.getElementById('mtTtransStatus');
   const show=(msg)=>{ st.classList.remove('hidden'); st.textContent=msg; };
   _mtTransBusy=true;
   const t0=Date.now();
   try{
-    show('🎙 업로드 중… ('+f.name+')');
-    const fd=new FormData(); fd.append('file', f);
+    show('🎙 업로드 중… ('+(name||'녹음')+')');
+    const fd=new FormData(); fd.append('file', fileOrBlob, name||'recording');
     const res=await fetch('/api/minutes/transcribe',{method:'POST',
       headers: token?{'Authorization':'Bearer '+token}:{}, body:fd});
     if(!res.ok){ let d='HTTP '+res.status; try{const j=await res.json(); if(j&&j.detail)d=j.detail;}catch(_){} throw new Error(d); }
@@ -1464,6 +1466,50 @@ async function minutesTranscribe(input){
     show(''); st.classList.add('hidden');
     toast('전사 실패: '+(e.message||''),true);
   }finally{ _mtTransBusy=false; }
+}
+
+/* 앱 내 직접 녹음(MediaRecorder) — 폰 기본 녹음기(10분 제한)를 우회, 길이 제한 없음 */
+let _mtMedia=null, _mtChunks=[], _mtMediaTimer=null, _mtMediaStart=0, _mtMediaStream=null;
+function _updMediaRec(){
+  const st=document.getElementById('mtTtransStatus'); if(!st) return;
+  const s=Math.max(0,Math.round((Date.now()-_mtMediaStart)/1000));
+  const mm=String(Math.floor(s/60)).padStart(2,'0'), ss=String(s%60).padStart(2,'0');
+  st.classList.remove('hidden');
+  st.innerHTML='<span class="rec-dot"></span><b style="color:#ef4444;">회의 녹음 중</b> '+mm+':'+ss+
+    ' <span style="color:var(--fg-3);">· 정지 누르면 자동 전사됩니다</span>';
+}
+async function toggleMeetingRec(){
+  const btn=document.getElementById('mtRecBtn');
+  if(_mtMedia && _mtMedia.state!=='inactive'){ try{_mtMedia.stop();}catch(_){} return; }  // 정지
+  if(_mtTransBusy){ toast('전사가 끝난 뒤 다시 녹음해주세요',true); return; }
+  if(!navigator.mediaDevices || !window.MediaRecorder){ toast('이 브라우저는 앱 내 녹음을 지원하지 않아요',true); return; }
+  try{ _mtMediaStream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ toast('마이크 권한을 허용해주세요',true); return; }
+  _mtChunks=[];
+  const mime=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'].find(m=>{try{return MediaRecorder.isTypeSupported(m);}catch(_){return false;}})||'';
+  try{ _mtMedia=mime? new MediaRecorder(_mtMediaStream,{mimeType:mime}) : new MediaRecorder(_mtMediaStream); }
+  catch(_){ _mtMedia=new MediaRecorder(_mtMediaStream); }
+  _mtMedia.ondataavailable=(e)=>{ if(e.data&&e.data.size) _mtChunks.push(e.data); };
+  _mtMedia.onstart=()=>{
+    _mtMediaStart=Date.now();
+    if(btn){ btn.classList.add('rec'); btn.innerHTML='<span style="width:9px;height:9px;border-radius:2px;background:#fff;display:inline-block;"></span> 정지'; }
+    _updMediaRec(); clearInterval(_mtMediaTimer); _mtMediaTimer=setInterval(_updMediaRec,1000);
+  };
+  _mtMedia.onstop=()=>{
+    clearInterval(_mtMediaTimer); _mtMediaTimer=null;
+    if(_mtMediaStream){ _mtMediaStream.getTracks().forEach(t=>t.stop()); _mtMediaStream=null; }
+    if(btn){ btn.classList.remove('rec'); btn.innerHTML='<span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block;"></span>녹음'; }
+    const type=(_mtMedia&&_mtMedia.mimeType)||'audio/webm';
+    _mtMedia=null;
+    const ext=type.includes('mp4')?'m4a':(type.includes('ogg')?'ogg':'webm');
+    const blob=new Blob(_mtChunks,{type}); _mtChunks=[];
+    if(!blob.size){ const st=document.getElementById('mtTtransStatus'); if(st) st.classList.add('hidden'); return; }
+    const now=new Date();
+    const name='회의녹음_'+_fmtDay(now).replace(/-/g,'')+'_'+_fmtHM(now).replace(':','')+'.'+ext;
+    _doTranscribe(blob, name);   // 업로드 → 서버 전사 → 회의내용 자동 삽입 + 원본 보관
+  };
+  try{ _mtMedia.start(); }
+  catch(_){ toast('녹음을 시작할 수 없어요',true); if(_mtMediaStream){_mtMediaStream.getTracks().forEach(t=>t.stop());_mtMediaStream=null;} }
 }
 
 function welcomeHTML(){
