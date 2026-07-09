@@ -1,6 +1,6 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.config import settings
@@ -107,6 +107,37 @@ async def download_file(
     if not os.path.isfile(path):
         raise HTTPException(status_code=410, detail="파일이 저장소에서 삭제되었습니다")
     return FileResponse(path, filename=att.filename, media_type=att.content_type)
+
+
+@router.get("/{att_id}/preview")
+async def preview_file(
+    att_id: int,
+    page: int = 1,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """PDF 첨부의 지정 페이지를 PNG 이미지로 렌더해 반환(미리보기용). 다운로드와 동일한 접근권한."""
+    att = await _get_accessible(att_id, current_user, db)
+    path = stored_path(att.stored_name)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=410, detail="파일이 저장소에서 삭제되었습니다")
+    is_pdf = "pdf" in (att.content_type or "").lower() or att.filename.lower().endswith(".pdf")
+    if not is_pdf:
+        raise HTTPException(status_code=400, detail="미리보기는 PDF 문서만 지원합니다")
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(path)
+        try:
+            idx = min(max(page - 1, 0), doc.page_count - 1)
+            png = doc[idx].get_pixmap(dpi=130).tobytes("png")
+        finally:
+            doc.close()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="미리보기를 만들 수 없습니다")
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.delete("/{att_id}")

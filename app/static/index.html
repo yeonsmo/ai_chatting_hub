@@ -780,6 +780,43 @@
   </div>
 </div>
 
+<!-- ================= 회의록 미리보기 · 수정 ================= -->
+<style>@media (max-width:720px){ #mtResGrid{ grid-template-columns:1fr !important; } }</style>
+<div id="minutesResult" class="modal-overlay hidden" style="position:fixed; inset:0; z-index:64; background:rgba(10,10,14,0.55); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; padding:18px;">
+  <div class="modal-card" style="width:100%; max-width:860px; max-height:92vh; display:flex; flex-direction:column; border-radius:var(--r-lg); background:var(--glass-chrome); border:1px solid var(--rim-hair); box-shadow:var(--shadow-3);">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 22px 10px;">
+      <div style="font:700 16px/1.2 var(--font-sans); color:var(--fg-1);">📄 회의록 미리보기 · 수정</div>
+      <button onclick="closeMinutesResult()" class="comp-icon" style="width:30px; height:30px;" title="닫기">✕</button>
+    </div>
+    <div style="font:400 12px/1.6 var(--font-sans); color:var(--fg-3); padding:0 22px 12px;">AI가 정리한 내용을 확인하고 필요하면 고쳐서 <b style="color:var(--accent);">다시 생성</b>하세요. 마음에 들면 다운로드하면 됩니다.</div>
+    <div style="flex:1; overflow-y:auto; padding:0 22px 6px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px;" id="mtResGrid">
+      <div style="border-radius:12px; overflow:hidden; border:1px solid var(--rim-hair); background:#fff; align-self:start; box-shadow:0 8px 22px -14px rgba(0,0,0,0.4);">
+        <img id="mtPrevImg" alt="미리보기 로딩 중…" style="display:block; width:100%; background:#fff; min-height:200px;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:11px;">
+        <div>
+          <label class="mt-lb">회의 목적</label>
+          <input id="mtR_purpose" class="field">
+        </div>
+        <div>
+          <label class="mt-lb">회의 내용</label>
+          <textarea id="mtR_content" class="field" rows="9" style="resize:vertical; min-height:150px; line-height:1.6;"></textarea>
+        </div>
+        <div>
+          <label class="mt-lb">특기사항 <span style="color:var(--fg-3); font-weight:400;">(한 줄에 하나 · 최대 9개)</span></label>
+          <textarea id="mtR_special" class="field" rows="5" style="resize:vertical; line-height:1.6;" placeholder="결정사항·액션아이템 등"></textarea>
+        </div>
+      </div>
+    </div>
+    <div id="mtResStatus" class="hidden" style="font:500 11.5px/1.5 var(--font-sans); color:var(--accent); padding:6px 22px 0;"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; padding:14px 22px 20px; flex-wrap:wrap;">
+      <button onclick="closeMinutesResult()" class="sm-btn" style="border-color:rgba(100,116,139,0.3); color:var(--fg-2); padding:10px 16px;">닫기</button>
+      <button onclick="regenMinutes()" class="sm-btn" style="padding:10px 16px; border-color:var(--accent); color:var(--accent);">🔄 수정 반영 · 다시 생성</button>
+      <button onclick="downloadMinutesResult()" class="primary-btn" style="padding:10px 20px; border-radius:11px;">⬇ 다운로드</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= 테마 색상 팝오버 ================= -->
 <div id="accentMenu" class="hidden" style="position:fixed; z-index:70; width:236px; padding:14px; border-radius:var(--r-lg); background:var(--glass-chrome); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat)); border:1px solid var(--rim-hair); box-shadow:var(--shadow-3), inset 0 1px 0 var(--rim-light);">
   <div style="font:700 12px/1 var(--font-sans); color:var(--fg-1); margin-bottom:10px;">테마 색상</div>
@@ -1353,6 +1390,7 @@ function closeMinutes(){
   document.getElementById('minutesModal').classList.add('hidden');
 }
 let _mtGenBusy=false;
+let _mtResult=null;   // {attId, filename, meta}
 async function submitMinutes(){
   if(_mtGenBusy) return;
   const v=id=>document.getElementById(id).value.trim();
@@ -1361,7 +1399,7 @@ async function submitMinutes(){
   // 일시 = 창 연 시각 ~ 생성 누른 시각
   const start=_mtStart||new Date(), end=new Date();
   const split=s=>s.split(',').map(x=>x.trim()).filter(Boolean);
-  const body={
+  const meta={
     title:v('mtTitle'),
     datetime:_fmtDay(start)+' '+_fmtHM(start)+'~'+_fmtHM(end),
     dept:v('mtDept'), writer:(me&&me.username)||'',
@@ -1372,15 +1410,13 @@ async function submitMinutes(){
   const st=document.getElementById('mtTtransStatus');
   const show=m=>{ st.classList.remove('hidden'); st.textContent=m; };
   _mtGenBusy=true;
-  const btns=document.querySelectorAll('#minutesModal .primary-btn'); btns.forEach(b=>b.disabled=true);
+  document.querySelectorAll('#minutesModal .primary-btn').forEach(b=>b.disabled=true);
   try{
     show('📝 회의록 생성 중… (AI가 회의 내용을 정리하고 있어요)');
-    const r=await api('POST','/minutes/generate',body);   // 고정 모델 + 구조화 출력 → HP 양식 PDF
-    show('✅ 회의록 생성 완료 · 보관함에 저장되었습니다');
-    toast('회의록이 생성되었습니다');
-    // 자동 다운로드
-    try{ await apiDownload('/files/'+r.attachment.id+'/download', r.attachment.filename); }catch(_){}
-    setTimeout(()=>{ closeMinutes(); }, 900);
+    const r=await api('POST','/minutes/generate',meta);   // 고정 모델 + 구조화 출력 → HP 양식 PDF
+    st.classList.add('hidden');
+    _openMinutesResult(r, meta);                           // 자동 다운로드 대신 미리보기+수정
+    closeMinutes();
   }catch(e){
     show(''); st.classList.add('hidden');
     toast('회의록 생성 실패: '+(e.message||''),true);
@@ -1389,6 +1425,52 @@ async function submitMinutes(){
     document.querySelectorAll('#minutesModal .primary-btn').forEach(b=>b.disabled=false);
   }
 }
+function _openMinutesResult(r, meta){
+  _mtResult={attId:r.attachment.id, filename:r.attachment.filename, meta:meta};
+  const f=r.fields||{};
+  document.getElementById('mtR_purpose').value=f.purpose||'';
+  document.getElementById('mtR_content').value=f.content||'';
+  document.getElementById('mtR_special').value=(f.special||[]).join('\n');
+  document.getElementById('mtResStatus').classList.add('hidden');
+  document.getElementById('minutesResult').classList.remove('hidden');
+  _loadMtPreview();
+}
+async function _loadMtPreview(){
+  const img=document.getElementById('mtPrevImg');
+  img.alt='미리보기 로딩 중…'; img.removeAttribute('src');
+  try{ img.src=await apiBlobUrl('/files/'+_mtResult.attId+'/preview'); }
+  catch(e){ img.alt='(미리보기를 불러오지 못했어요 — 다운로드는 가능합니다)'; }
+}
+async function regenMinutes(){
+  if(!_mtResult||_mtGenBusy) return;
+  const v=id=>document.getElementById(id).value;
+  const special=v('mtR_special').split('\n').map(s=>s.trim()).filter(Boolean).slice(0,9);
+  const body=Object.assign({}, _mtResult.meta, {
+    render_only:true, purpose:v('mtR_purpose').trim(),
+    content:v('mtR_content'), special:special,
+  });
+  const st=document.getElementById('mtResStatus');
+  st.classList.remove('hidden'); st.textContent='🔄 수정 내용으로 다시 만드는 중…';
+  _mtGenBusy=true;
+  try{
+    const prev=_mtResult.attId;
+    const r=await api('POST','/minutes/generate',body);
+    _mtResult.attId=r.attachment.id; _mtResult.filename=r.attachment.filename;
+    await _loadMtPreview();
+    st.textContent='✅ 반영됐어요';
+    setTimeout(()=>st.classList.add('hidden'),1600);
+    try{ if(prev!==_mtResult.attId) await api('DELETE','/files/'+prev); }catch(_){}  // 이전 미리보기 정리
+  }catch(e){
+    st.classList.add('hidden');
+    toast('다시 생성 실패: '+(e.message||''),true);
+  }finally{ _mtGenBusy=false; }
+}
+async function downloadMinutesResult(){
+  if(!_mtResult) return;
+  try{ await apiDownload('/files/'+_mtResult.attId+'/download', _mtResult.filename); toast('다운로드했어요'); }
+  catch(e){ toast(e.message||'다운로드 실패',true); }
+}
+function closeMinutesResult(){ document.getElementById('minutesResult').classList.add('hidden'); }
 let _mtRecog=null, _mtRec=false, _mtTimer=null, _mtStartMs=0, _mtInterim='';
 function _mtRecStatus(){
   const st=document.getElementById('mtTtransStatus'); if(!st) return;
@@ -1602,12 +1684,25 @@ function attachChipsHTML(atts){
     </div>`).join('')+`</div>`;
 }
 
-// 생성물/첨부 렌더: 이미지는 인라인 미리보기, 문서는 다운로드 카드
+// 생성물/첨부 렌더: 이미지·PDF는 인라인 미리보기, 그 외 문서는 다운로드 카드
+function _isPdf(a){ return /pdf/i.test(a.content_type||'') || /\.pdf$/i.test(a.filename||''); }
+function _dlCard(a, label){
+  return `<div class="attach-card" style="cursor:pointer; align-self:flex-start;" onclick="apiDownload('/files/${a.id}/download','${esc(jsq(a.filename))}').catch(e=>toast(e.message,true))" title="다운로드">
+      <div style="width:32px; height:32px; flex:0 0 32px; border-radius:9px; background:rgba(255,122,77,0.14); display:flex; align-items:center; justify-content:center; color:var(--accent);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div style="min-width:0;">
+        <div style="font:600 12.5px/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;">${label} ${esc(a.filename)}</div>
+        <div style="font:400 10px/1.3 var(--font-sans); color:var(--fg-3);">${fmtSize(a.size_bytes)} · 클릭하여 저장</div>
+      </div>
+    </div>`;
+}
 function genAttachmentsHTML(atts){
   if(!atts||!atts.length) return '';
   const imgs=atts.filter(a=>(a.content_type||'').startsWith('image/'));
-  const docs=atts.filter(a=>!(a.content_type||'').startsWith('image/'));
-  let html='<div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">';
+  const pdfs=atts.filter(a=>!(a.content_type||'').startsWith('image/') && _isPdf(a));
+  const docs=atts.filter(a=>!(a.content_type||'').startsWith('image/') && !_isPdf(a));
+  let html='<div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">';
   if(imgs.length){
     html+='<div style="display:flex; flex-wrap:wrap; gap:8px;">'+imgs.map(a=>`
       <div style="position:relative;">
@@ -1616,24 +1711,30 @@ function genAttachmentsHTML(atts){
           style="max-width:min(360px,100%); max-height:360px; border-radius:14px; border:1px solid var(--rim-hair); cursor:pointer;">
       </div>`).join('')+'</div>';
   }
-  docs.forEach(a=>{
-    html+=`<div class="attach-card" style="cursor:pointer; align-self:flex-start;" onclick="apiDownload('/files/${a.id}/download','${esc(jsq(a.filename))}').catch(e=>toast(e.message,true))" title="다운로드">
-      <div style="width:32px; height:32px; flex:0 0 32px; border-radius:9px; background:rgba(255,122,77,0.14); display:flex; align-items:center; justify-content:center; color:var(--accent);">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+  // PDF 문서: 첫 페이지 미리보기 + 다운로드 카드 (회사 서류 등)
+  pdfs.forEach(a=>{
+    html+=`<div style="display:flex; flex-direction:column; gap:7px; align-self:flex-start; max-width:min(340px,100%);">
+      <div style="position:relative; border-radius:12px; overflow:hidden; border:1px solid var(--rim-hair); background:#fff; box-shadow:0 8px 22px -14px rgba(0,0,0,0.4);">
+        <img data-preview="${a.id}" alt="미리보기 로딩 중…" title="클릭하여 다운로드"
+          onclick="apiDownload('/files/${a.id}/download','${esc(jsq(a.filename))}').catch(e=>toast(e.message,true))"
+          style="display:block; width:100%; cursor:pointer; background:#fff; min-height:120px;">
+        <div style="position:absolute; top:7px; left:8px; font:600 10px/1 var(--font-sans); color:#fff; background:rgba(17,17,20,0.62); padding:4px 8px; border-radius:6px; backdrop-filter:blur(4px);">📄 미리보기</div>
       </div>
-      <div style="min-width:0;">
-        <div style="font:600 12.5px/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;">⬇ ${esc(a.filename)}</div>
-        <div style="font:400 10px/1.3 var(--font-sans); color:var(--fg-3);">${fmtSize(a.size_bytes)} · 클릭하여 저장</div>
-      </div>
+      ${_dlCard(a,'⬇')}
     </div>`;
   });
+  docs.forEach(a=>{ html+=_dlCard(a,'⬇'); });
   return html+'</div>';
 }
-// 인증 필요한 이미지 blob 로드
+// 인증 필요한 이미지/미리보기 blob 로드
 function hydrateImages(container){
   container.querySelectorAll('img[data-att]').forEach(async img=>{
     try{ img.src=await apiBlobUrl(`/files/${img.dataset.att}/download`); }
     catch(e){ img.alt='(이미지를 불러오지 못했습니다)'; }
+  });
+  container.querySelectorAll('img[data-preview]').forEach(async img=>{
+    try{ img.src=await apiBlobUrl(`/files/${img.dataset.preview}/preview`); }
+    catch(e){ img.alt='(미리보기를 불러오지 못했습니다)'; }
   });
 }
 
