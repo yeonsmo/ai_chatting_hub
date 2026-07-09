@@ -171,37 +171,51 @@ async def generate_minutes(
     db: AsyncSession = Depends(get_db),
 ):
     """회의 메타 + 메모/전사문 → (고정 모델의 구조화 출력) → 회사 표준 양식 회의록 PDF.
-    도구 호출에 의존하지 않아 어떤 모델(가비아 GPT Pro 포함)에서도 안정적으로 생성된다."""
+    도구 호출에 의존하지 않아 어떤 모델(가비아 GPT Pro 포함)에서도 안정적으로 생성된다.
+
+    render_only=true면 AI를 호출하지 않고 전달된 purpose/content/special을 그대로 렌더한다
+    (미리보기에서 사용자가 수정한 내용을 재생성할 때 사용)."""
     notes = str(payload.get("notes") or "").strip()
-    if not notes:
-        raise HTTPException(status_code=400, detail="회의 내용(메모/전사)을 입력해주세요")
     title = str(payload.get("title") or "").strip()
+    render_only = bool(payload.get("render_only"))
+    content_in = str(payload.get("content") or "").strip()
+    if not notes and not (render_only and content_in):
+        raise HTTPException(status_code=400, detail="회의 내용(메모/전사)을 입력해주세요")
 
-    route = await _resolve_minutes_route(db)
-    system_prompt = ("너는 회의록 정리 보조자다. 반드시 유효한 JSON 객체 하나만 출력한다. "
-                     "코드펜스(```), 설명, 인사말을 절대 붙이지 마라.")
-    user_msg = (
-        "다음 회의 메모/전사문을 아래 JSON 스키마로만 정리하라.\n"
-        '스키마: {"purpose": "회의 목적 한 줄", '
-        '"content": "회의 내용 본문(핵심 위주 번호매김/문단, 줄바꿈은 \\n)", '
-        '"notes": ["특기사항·결정사항·액션아이템 항목", "... 최대 9개"]}\n'
-        "규칙: 메모에 실제로 있는 사실만 사용하고 지어내지 마라. 없으면 빈 문자열/빈 배열로 둔다.\n\n"
-        f"[회의 제목/목적] {title or '(미입력)'}\n"
-        f"[회의 메모/전사]\n{notes}"
-    )
-    messages = [{"role": "user", "content": user_msg}]
-    try:
-        outcome = await run_chat(db, route.provider, route.provider_model_id,
-                                 system_prompt, messages, None)
-    except HTTPException:
-        raise
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=friendly_api_error(e))
-
-    try:
-        parsed = _extract_json_obj(outcome.text)
-    except (ValueError, TypeError):
-        parsed = {"purpose": title, "content": notes, "notes": []}  # 파싱 실패 시 원문 보존
+    if render_only:
+        # AI 생략 — 사용자가 미리보기에서 편집한 값을 그대로 사용
+        parsed = {"purpose": (payload.get("purpose") or title),
+                  "content": content_in or notes,
+                  "notes": payload.get("special") or []}
+        in_tok = out_tok = 0
+        model_label = "직접 편집"
+    else:
+        route = await _resolve_minutes_route(db)
+        system_prompt = ("너는 회의록 정리 보조자다. 반드시 유효한 JSON 객체 하나만 출력한다. "
+                         "코드펜스(```), 설명, 인사말을 절대 붙이지 마라.")
+        user_msg = (
+            "다음 회의 메모/전사문을 아래 JSON 스키마로만 정리하라.\n"
+            '스키마: {"purpose": "회의 목적 한 줄", '
+            '"content": "회의 내용 본문(핵심 위주 번호매김/문단, 줄바꿈은 \\n)", '
+            '"notes": ["특기사항·결정사항·액션아이템 항목", "... 최대 9개"]}\n'
+            "규칙: 메모에 실제로 있는 사실만 사용하고 지어내지 마라. 없으면 빈 문자열/빈 배열로 둔다.\n\n"
+            f"[회의 제목/목적] {title or '(미입력)'}\n"
+            f"[회의 메모/전사]\n{notes}"
+        )
+        messages = [{"role": "user", "content": user_msg}]
+        try:
+            outcome = await run_chat(db, route.provider, route.provider_model_id,
+                                     system_prompt, messages, None)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=friendly_api_error(e))
+        try:
+            parsed = _extract_json_obj(outcome.text)
+        except (ValueError, TypeError):
+            parsed = {"purpose": title, "content": notes, "notes": []}  # 파싱 실패 시 원문 보존
+        in_tok, out_tok = outcome.input_tokens, outcome.output_tokens
+        model_label = route.label
 
     fields = {
         "datetime": payload.get("datetime"), "place": payload.get("place"),
@@ -226,6 +240,8 @@ async def generate_minutes(
     db.add(att)
     await db.commit()
     await db.refresh(att)
+    # fields: 미리보기에서 사용자가 편집 가능한 AI 정리 결과(특기사항=special)
     return {"attachment": to_response(att),
-            "input_tokens": outcome.input_tokens, "output_tokens": outcome.output_tokens,
-            "model": route.label}
+            "input_tokens": in_tok, "output_tokens": out_tok, "model": model_label,
+            "fields": {"purpose": fields["purpose"], "content": fields["content"],
+                       "special": fields["notes"]}}
