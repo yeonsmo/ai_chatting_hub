@@ -369,7 +369,9 @@
   .kvmuted { color:var(--fg-3); font:400 11.5px/1.5 var(--font-sans); }
   .kvraw { white-space:pre-wrap; word-break:break-word; font:400 11.5px/1.5 var(--font-sans); color:var(--fg-1); }
   .mt-lb { display:block; font:600 11px/1.4 var(--font-sans); color:var(--fg-2); margin-bottom:5px; }
-  #mtMicBtn.rec { color:#fff; background:var(--danger); border-color:var(--danger); }
+  #mtMicBtn.rec { color:#fff; background:var(--danger); border-color:var(--danger); animation:recpulse 1.2s infinite; }
+  .rec-dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:#ef4444; margin-right:6px; vertical-align:middle; animation:recpulse 1s infinite; }
+  @keyframes recpulse { 0%,100%{ opacity:1; box-shadow:0 0 0 0 rgba(239,68,68,.55);} 50%{ opacity:.45; box-shadow:0 0 0 6px rgba(239,68,68,0);} }
 
   /* 토스트 */
   #toasts { position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center; }
@@ -1381,7 +1383,16 @@ async function submitMinutes(){
     document.querySelectorAll('#minutesModal .primary-btn').forEach(b=>b.disabled=false);
   }
 }
-let _mtRecog=null, _mtRec=false;
+let _mtRecog=null, _mtRec=false, _mtTimer=null, _mtStartMs=0, _mtInterim='';
+function _mtRecStatus(){
+  const st=document.getElementById('mtTtransStatus'); if(!st) return;
+  const s=Math.max(0,Math.round((Date.now()-_mtStartMs)/1000));
+  const mm=String(Math.floor(s/60)).padStart(2,'0'), ss=String(s%60).padStart(2,'0');
+  st.classList.remove('hidden');
+  st.innerHTML='<span class="rec-dot"></span><b style="color:#ef4444;">녹음 중</b> '+mm+':'+ss+
+    (_mtInterim? ' <span style="color:var(--fg-3);">· '+esc(_mtInterim.slice(-42))+'</span>'
+               : ' <span style="color:var(--fg-3);">· 말씀하세요 (다시 누르면 정지)</span>');
+}
 function minutesMic(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){ toast('이 브라우저는 음성 입력을 지원하지 않아요 (크롬 권장)',true); return; }
@@ -1389,19 +1400,31 @@ function minutesMic(){
   if(_mtRec||_mtRecog){ try{_mtRecog.stop();}catch(_){} return; }  // 연타 시 두번째 인스턴스 생성 방지
   _mtRec=true;                                                     // start 전에 동기적으로 잠금
   _mtRecog=new SR(); _mtRecog.lang='ko-KR'; _mtRecog.interimResults=true; _mtRecog.continuous=true;
-  const ta=document.getElementById('mtNotes'); const base=ta.value;
+  const ta=document.getElementById('mtNotes');
   _mtRecog.onresult=(e)=>{
     let fin='',interim='';
     for(let i=e.resultIndex;i<e.results.length;i++){
       const t=e.results[i][0].transcript;
       if(e.results[i].isFinal) fin+=t; else interim+=t;
     }
-    if(fin) ta.value=(ta.value?ta.value:base)+fin;
+    if(fin){ ta.value=(ta.value.replace(/\s*$/,'')+' '+fin.trim()+' ').replace(/^\s+/,''); _mtInterim=''; }
+    else { _mtInterim=interim; }
+    _mtRecStatus();
   };
-  _mtRecog.onstart=()=>{ _mtRec=true; btn.classList.add('rec'); };
-  _mtRecog.onend=()=>{ _mtRec=false; _mtRecog=null; btn.classList.remove('rec'); };
-  _mtRecog.onerror=()=>{ _mtRec=false; _mtRecog=null; btn.classList.remove('rec'); };
-  try{ _mtRecog.start(); }catch(_){ _mtRec=false; _mtRecog=null; }
+  const stop=(msg)=>{
+    _mtRec=false; _mtRecog=null; _mtInterim=''; btn.classList.remove('rec');
+    clearInterval(_mtTimer); _mtTimer=null;
+    const st=document.getElementById('mtTtransStatus');
+    if(st && !_mtTransBusy){ st.innerHTML=msg||'⏹ 녹음 정지됨'; setTimeout(()=>{ if(!_mtRec&&!_mtTransBusy) st.classList.add('hidden'); },2500); }
+  };
+  _mtRecog.onstart=()=>{
+    _mtRec=true; btn.classList.add('rec'); _mtStartMs=Date.now(); _mtInterim='';
+    _mtRecStatus();
+    clearInterval(_mtTimer); _mtTimer=setInterval(_mtRecStatus,1000);
+  };
+  _mtRecog.onend=()=>stop('⏹ 녹음 정지됨');
+  _mtRecog.onerror=(e)=>stop((e&&e.error==='not-allowed')?'⚠ 마이크 권한을 허용해주세요':'⏹ 녹음 정지됨');
+  try{ _mtRecog.start(); }catch(_){ stop('⏹ 녹음 정지됨'); }
 }
 let _mtTransBusy=false;
 async function minutesTranscribe(input){
