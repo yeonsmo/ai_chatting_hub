@@ -289,6 +289,161 @@ def render_minutes_pdf(fields: dict) -> bytes:
     return out.getvalue()
 
 
+# ---------------- 회사 표준 양식(AcroForm 채우기) ----------------
+# 견적서/거래명세서 등은 필드 이름이 박힌 AcroForm PDF다. 좌표 오버레이 대신
+# PyMuPDF로 필드 값을 채우면(내장 CID 한글 폰트로 외관 스트림까지 생성) 어떤 뷰어에서도
+# 값이 그대로 보인다. 회사 원본 레이아웃/도장/QR 필드는 손대지 않고 유지된다.
+
+_ESTIMATE_TEMPLATE = os.path.join(_FORM_DIR, "estimate.pdf")
+_ESTIMATE_SIMPLE_TEMPLATE = os.path.join(_FORM_DIR, "estimate_simple.pdf")
+_STATEMENT_TEMPLATE = os.path.join(_FORM_DIR, "transaction_statement.pdf")
+
+_FORM_TEMPLATE_BYTES: dict = {}
+
+
+def _form_template_bytes(path: str) -> bytes:
+    """정적 양식 PDF 바이트를 1회만 읽어 캐시(반복 생성 시 디스크 I/O 절감)."""
+    if path not in _FORM_TEMPLATE_BYTES:
+        with open(path, "rb") as f:
+            _FORM_TEMPLATE_BYTES[path] = f.read()
+    return _FORM_TEMPLATE_BYTES[path]
+
+
+def _won(n) -> str:
+    """금액을 천단위 콤마 문자열로. 숫자 변환 불가하면 빈 문자열."""
+    try:
+        return f"{int(round(float(n))):,}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _num(v):
+    """콤마·통화기호 섞인 값도 float로. 불가하면 None."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = re.sub(r"[^0-9.\-]", "", str(v))
+    try:
+        return float(s) if s not in ("", "-", ".") else None
+    except ValueError:
+        return None
+
+
+def _fill_acroform(template_path: str, values: dict) -> bytes:
+    """AcroForm 텍스트 필드를 이름 기준으로 채워 PDF 바이트 반환.
+    값이 None/빈문자열인 필드는 건너뛰어 원본 기본값/빈칸을 유지한다."""
+    import fitz  # PyMuPDF (지연 임포트)
+
+    doc = fitz.open(stream=_form_template_bytes(template_path), filetype="pdf")
+    try:
+        for page in doc:
+            for w in (page.widgets() or []):
+                if not (w.field_type_string or "").lower().startswith("text"):
+                    continue  # 체크박스/버튼/도장·QR 필드는 건드리지 않음
+                v = values.get(w.field_name)
+                if v is None or v == "":
+                    continue
+                w.field_value = str(v)
+                w.update()
+        out = doc.tobytes()
+    finally:
+        doc.close()
+    return out
+
+
+def _line_items(items, max_rows: int):
+    """[{name,unit,qty,price,amount,note}] → 행별 정규화 + 공급가액/세액 자동계산.
+    반환: (rows, 공급가액합계, 세액합계). amount 미지정 시 수량*단가로 계산."""
+    rows, sup_total, tax_total = [], 0.0, 0.0
+    for it in (items or [])[:max_rows]:
+        if not isinstance(it, dict):
+            it = {"name": str(it)}
+        qty, price = _num(it.get("qty")), _num(it.get("price"))
+        amount = _num(it.get("amount"))
+        if amount is None and qty is not None and price is not None:
+            amount = qty * price
+        tax = round(amount * 0.1) if amount is not None else None
+        if amount is not None:
+            sup_total += amount
+        if tax is not None:
+            tax_total += tax
+        rows.append({
+            "name": it.get("name"), "unit": it.get("unit"),
+            "qty": it.get("qty"), "price": price, "amount": amount, "tax": tax,
+            "note": it.get("note"),
+        })
+    return rows, sup_total, tax_total
+
+
+def render_estimate_pdf(data: dict) -> bytes:
+    """HP 견적서(또는 간이견적서) AcroForm을 채워 PDF 생성.
+    품목의 공급가액/세액/합계는 수량·단가로 자동계산한다."""
+    g = data.get
+    template = _ESTIMATE_SIMPLE_TEMPLATE if data.get("simple") else _ESTIMATE_TEMPLATE
+    rows, sup, tax = _line_items(g("items"), 11)
+    vals = {
+        "거래처이름": g("client_name"),
+        "거래처 담당자 성함": g("client_manager"),
+        "거래처 담당자 연락처": g("client_contact"),
+        "거래처 담당자혹은 거래처 팩스번호": g("client_fax"),
+        "견적 이름": g("estimate_name"),
+        "시험 대상품목 명 혹은 규격(규정)": g("target_spec"),
+        "HP엔지니어링 담다자 성함": g("hp_manager"),
+        "HP엔지니어링 담당자 사내직통번호": g("hp_phone"),
+        "HP엔지니어링 담당자 이메일 주소": g("hp_email"),
+        "견적번호 기입필드": g("estimate_no"),
+        "간이견적서발행일": g("issue_date"),   # 견적서 발행일(양식상 필드명이 이러함)
+        "임시 작업완료기한": g("work_deadline"),
+        "인도장소 기입란": g("delivery_place"),
+        "추가 협의된 사항이나, 확인할 사항, 명시할 사항 기입란": g("confirm_notes"),
+        "대금 결제일": g("payment_date"),
+        "공급가액의 합계액": _won(sup),
+        "공급가액의 합계액*10%": _won(tax),
+        "세액포함 총 합계액 기입필드": _won(sup + tax),
+    }
+    for i, r in enumerate(rows, 1):
+        # 원본 양식 오타: 7행 공급가액 필드명이 '공금가액7'
+        sup_key = "공금가액7" if i == 7 else f"공급가액{i}"
+        vals.update({
+            f"견적품명 {i}": r["name"], f"단위{i}": r["unit"], f"수량{i}": r["qty"],
+            f"단가{i}": _won(r["price"]) if r["price"] is not None else None,
+            sup_key: _won(r["amount"]) if r["amount"] is not None else None,
+            f"공급가액*10%_{i}": _won(r["tax"]) if r["tax"] is not None else None,
+            f"비고{i}": r["note"],
+        })
+    return _fill_acroform(template, vals)
+
+
+def render_transaction_statement_pdf(data: dict) -> bytes:
+    """HP 거래명세서 AcroForm을 채워 PDF 생성. 공급가액/세액/합계 자동계산."""
+    g = data.get
+    rows, sup, tax = _line_items(g("items"), 15)
+    vals = {
+        "거래처 이름": g("client_name"),
+        "거래처 담당자 이름": g("client_manager"),
+        "작업명(시험명)": g("work_name"),
+        "거래명세번호(거래명세송부일-거래처코드-거래명세송부횟수(오름차순)": g("statement_no"),
+        "작업완료 현황(시기)기입": g("work_done"),
+        "인도완료 일자(현황)기입": g("delivery_done"),
+        "거래명세서 첨부일 기입": g("attach_date"),
+        "대금지불 조건 기입(ex, 익월 20일지급, 거래명세 교부 당일지급 등)": g("payment_terms"),
+        "공급가액 합계액": _won(sup),
+        "공급가액*10% 합계액": _won(tax),
+        "합계금액(공급가액+공급가액*10%)": _won(sup + tax),
+    }
+    for i, r in enumerate(rows, 1):
+        vals.update({
+            f"거래일자(시험일자)혹은 품명 등{i}": r["name"], f"단위{i}": r["unit"],
+            f"수량{i}": r["qty"],
+            f"단가{i}": _won(r["price"]) if r["price"] is not None else None,
+            f"공급가액{i}": _won(r["amount"]) if r["amount"] is not None else None,
+            f"공급가액*10%_{i}": _won(r["tax"]) if r["tax"] is not None else None,
+            f"비고{i}": r["note"],
+        })
+    return _fill_acroform(_STATEMENT_TEMPLATE, vals)
+
+
 # ---------------- XLSX ----------------
 
 def render_xlsx(sheets: list) -> bytes:
