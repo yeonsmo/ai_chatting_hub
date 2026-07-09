@@ -33,7 +33,9 @@ REQUEST_TIMEOUT = 180.0
 
 # 프로바이더 메타: label(표시), env_fallback(.env 키 사용 가능 여부), extra_fields(키 등록 시 추가 설정)
 PROVIDERS = {
-    "anthropic": {"label": "Anthropic (Claude)", "extra_fields": []},
+    # base_url: 비우면 Anthropic 공식 API. 가비아 등 Anthropic 호환 게이트웨이로 클로드를
+    # 받아오려면 그 엔드포인트를 넣는다(가비아 키 + 클로드 모델ID로 라우팅).
+    "anthropic": {"label": "Anthropic (Claude)", "extra_fields": ["base_url"]},
     "gabia":     {"label": "가비아 AI Hub",       "extra_fields": []},
     "openai":    {"label": "OpenAI 공식",         "extra_fields": []},
     "azure":     {"label": "Azure OpenAI",        "extra_fields": ["endpoint", "api_version"]},
@@ -129,7 +131,9 @@ def _make_anthropic_client(provider: str, key: str, extra: dict):
         return anthropic.AsyncAnthropicBedrock(
             aws_access_key=key, aws_secret_key=secret, aws_region=region, timeout=REQUEST_TIMEOUT,
         )
-    return anthropic.AsyncAnthropic(api_key=key, timeout=REQUEST_TIMEOUT)
+    # base_url 지정 시 가비아 등 Anthropic 호환 게이트웨이로 호출(미지정이면 공식 API)
+    base_url = (extra.get("base_url") or "").strip() or None
+    return anthropic.AsyncAnthropic(api_key=key, base_url=base_url, timeout=REQUEST_TIMEOUT)
 
 
 def _anthropic_assistant_content(blocks) -> list:

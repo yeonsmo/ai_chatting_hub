@@ -64,7 +64,12 @@ def extract_reference_text(data: bytes, filename: str, content_type: str) -> str
     # PDF/텍스트 등은 기존 추출기 재사용
     from app.file_utils import extract_text
     t = extract_text(data, filename, content_type)
-    return t[:MAX_REF_CHARS] if t else None
+    if not t:
+        return None
+    # PDF 임베딩 폰트 결손으로 생기는 사설영역/제어문자 정리(검색 노이즈 방지)
+    t = re.sub(r"[-\x00-\x08\x0b\x0c\x0e-\x1f]", "", t)
+    t = re.sub(r"[ \t]{3,}", "  ", t)
+    return t[:MAX_REF_CHARS]
 
 
 def sheet_titles(text: str) -> list[str]:
