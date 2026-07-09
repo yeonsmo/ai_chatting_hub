@@ -10,7 +10,7 @@ _CSP = (
     "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
     "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; "
-    "img-src 'self' data:; "
+    "img-src 'self' data: blob:; "  # blob: — 인증 이미지(생성물/첨부)를 blob URL로 인라인 표시하므로 필요
     "connect-src 'self'; "
     "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
 )
