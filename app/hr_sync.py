@@ -143,6 +143,50 @@ async def fetch_own_employee(user) -> dict | None:
     return rec
 
 
+async def submit_document(user, doc_type: str, title: str, file_bytes: bytes,
+                          filename: str, content_type: str = "application/pdf") -> dict:
+    """기안: 생성 서류를 HR 결재로 전송한다(방향 ③).
+
+    본인 확인: author_employee_no는 **로그인한 본인 사번만** 실어 보낸다(클라 입력 아님).
+    사번이 없으면 본인 확인 불가로 전송을 거부한다.
+    """
+    import base64
+    import hashlib
+    empno = str(getattr(user, "employee_no", "") or "").strip()
+    if not empno:
+        raise HRSyncError("본인 사번이 없어 기안할 수 없습니다(HR 동기화로 사번 연결 후 이용).")
+    base = (settings.hr_base_url or "").strip().rstrip("/")
+    if not base:
+        raise HRSyncError("HR 서버 주소가 설정되지 않았습니다 (.env HR_BASE_URL).")
+    url = base + (settings.hr_documents_path or "/api/v1/documents/ingest")
+    payload = {
+        "doc_type": doc_type,
+        "title": title,
+        "author_employee_no": empno,          # 본인 확인 정보(본인 사번만)
+        "author_name": getattr(user, "name", None) or getattr(user, "username", None),
+        "file": {"filename": filename, "content_type": content_type,
+                 "content_base64": base64.b64encode(file_bytes).decode("ascii")},
+    }
+    headers = _auth_headers()
+    # 멱등키는 반드시 ASCII(HTTP 헤더 제약). 한글 파일명 등이 섞이지 않도록 해시로 생성.
+    seed = f"{getattr(user, 'id', '')}-{filename}".encode("utf-8")
+    headers["Idempotency-Key"] = "hub-doc-" + hashlib.md5(seed).hexdigest()[:20]
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            r = await client.post(url, json=payload, headers=headers)
+            r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HRSyncError(f"HR 결재 접수 실패 (HTTP {e.response.status_code})")
+    except httpx.HTTPError as e:
+        raise HRSyncError(f"HR 서버에 연결할 수 없습니다 ({type(e).__name__})")
+    try:
+        data = r.json() if r.content else {}
+    except ValueError:
+        data = {}
+    return {"hr_document_id": _g(data, "hr_document_id", "document_id", "id"),
+            "approval_status": _g(data, "approval_status", "status", default="pending")}
+
+
 async def sync_employees(db: AsyncSession, updated_since: str | None = None,
                          auto_create: bool | None = None) -> dict:
     """HR 명부로 계정을 동기화하고 처리 결과 요약을 반환."""
