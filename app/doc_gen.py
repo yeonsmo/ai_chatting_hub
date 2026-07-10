@@ -336,47 +336,156 @@ def _num(v):
         return None
 
 
+# 열 성격별 정렬: 금액/단가/합계=우측, 단위/수량=가운데, 그 외=좌측.
+_ACRO_RIGHT = re.compile(r"단가|공[급금]가액|금\s?액|합계|\*10%")
+_ACRO_CENTER = re.compile(r"단위|수량")
+_FILL_RGB = (0.09, 0.09, 0.11)
+
+
+def _acro_align(name: str) -> str:
+    if _ACRO_RIGHT.search(name):
+        return "r"
+    if _ACRO_CENTER.search(name):
+        return "c"
+    return "l"
+
+
 def _fill_acroform(template_path: str, values: dict, overlays=None) -> bytes:
     """AcroForm 필드를 이름 기준으로 채워 PDF 바이트 반환.
-    - 텍스트/콤보박스: 값이 있으면 문자열로 기입(콤보는 원본 선택지와 정확히 일치해야 함)
-    - 체크박스: 값이 참이면 체크
-    - 도장/QR/서명 등 버튼 필드는 건드리지 않음
-    값이 None/빈문자열인 필드는 건너뛰어 원본 기본값/빈칸을 유지한다.
-    overlays: [{page, text, x|right, y, size}] — 폼 필드가 없는 자리(예: 합계)에 숫자 텍스트를 그린다."""
+
+    폼 내장 폰트(AdobeGothicStd)는 ASCII/숫자/공백을 전각으로 렌더해 '띄어쓰기가 벌어져'
+    보이고, PyMuPDF 위젯 API로는 정렬(Q)·커스텀 폰트 지정이 불안정하다. 그래서 각 필드의
+    사각형만 읽어 값을 직접 Pretendard로 그리고(자연스러운 자간·열별 정렬), 입력 위젯은
+    평탄화(삭제)해 어떤 뷰어에서도 동일하게 보이게 한다. 도장/QR/서명(버튼) 필드는 보존.
+    - 텍스트/콤보: 값 그리기(금액=우측, 단위/수량=가운데, 그 외=좌측)
+    - 체크박스: 값이 참이면 벡터 체크표시
+    overlays: [{page, text, x|right, y, size}] — 폼 필드가 없는 자리(예: 합계)에 텍스트를 그린다."""
     import fitz  # PyMuPDF (지연 임포트)
+
+    reg = os.path.join(_FONT_DIR, "Pretendard-Regular.ttf")
+    has_font = os.path.isfile(reg)
+
+    # 그릴 문자만 모아 Pretendard를 서브셋 → 임베딩(전체 폰트 임베딩 시 수 MB로 커짐).
+    # PyMuPDF subset_fonts()는 양식 원본 CID 폰트를 손상시켜 쓰지 않는다.
+    def _collect_chars() -> set:
+        chars = set("0123456789.,-/():%원₩ ")
+        for v in values.values():
+            if isinstance(v, str):
+                chars.update(v)
+        for ov in (overlays or []):
+            chars.update(str(ov.get("text") or ""))
+        return chars
+
+    fontbuffer = None
+    if has_font:
+        try:
+            import io as _io
+            from fontTools import subset as _ftsubset
+            from fontTools.ttLib import TTFont as _TTFont
+            tt = _TTFont(reg)
+            ss = _ftsubset.Subsetter()
+            ss.populate(unicodes=sorted({ord(c) for c in _collect_chars()}))
+            ss.subset(tt)
+            _b = _io.BytesIO(); tt.save(_b); fontbuffer = _b.getvalue()
+        except Exception:  # noqa: BLE001 — 서브셋 실패 시 전체 폰트로 폴백
+            fontbuffer = None
+
+    if fontbuffer:
+        measure = fitz.Font(fontbuffer=fontbuffer)
+    elif has_font:
+        measure = fitz.Font(fontfile=reg)
+    else:
+        measure = fitz.Font("helv")
+    fontname = "pret" if has_font else "helv"
+    _ready = set()   # 폰트 등록된 페이지 인덱스
+
+    def _ensure_font(page, pi):
+        if pi in _ready or not has_font:
+            return
+        if fontbuffer:
+            page.insert_font(fontname="pret", fontbuffer=fontbuffer)
+        else:
+            page.insert_font(fontname="pret", fontfile=reg)
+        _ready.add(pi)
+
+    def _draw(page, pi, rect, text, size, align):
+        text = str(text)
+        if not text:
+            return
+        _ensure_font(page, pi)
+        size = max(6.0, min(float(size or 9.0), 15.0))
+        tw = measure.text_length(text, size)
+        avail = rect.width - 6
+        if tw > avail and tw > 0:                # 칸을 넘치면 폰트를 줄여 맞춤
+            size = max(6.0, size * avail / tw)
+            tw = measure.text_length(text, size)
+        if align == "r":
+            x = rect.x1 - tw - 3
+        elif align == "c":
+            x = rect.x0 + (rect.width - tw) / 2
+        else:
+            x = rect.x0 + 3
+        y = rect.y0 + (rect.height + size * 0.70) / 2   # 세로 중앙
+        page.insert_text((x, y), text, fontsize=size, fontname=fontname, color=_FILL_RGB)
+
+    def _check(page, rect):
+        w, h = rect.width, rect.height
+        sh = page.new_shape()
+        sh.draw_line(fitz.Point(rect.x0 + w * 0.20, rect.y0 + h * 0.52),
+                     fitz.Point(rect.x0 + w * 0.42, rect.y0 + h * 0.74))
+        sh.draw_line(fitz.Point(rect.x0 + w * 0.42, rect.y0 + h * 0.74),
+                     fitz.Point(rect.x0 + w * 0.80, rect.y0 + h * 0.24))
+        sh.finish(width=max(1.0, h * 0.10), color=_FILL_RGB)
+        sh.commit()
 
     doc = fitz.open(stream=_form_template_bytes(template_path), filetype="pdf")
     try:
+        # 1) 위젯 사각형/값을 먼저 수집(삭제 후에도 그리기 위해 rect 복사)
+        plan = []            # (page_index, rect, kind, payload)
+        input_types = {"Text", "ComboBox", "ListBox", "CheckBox"}
+        for pi, page in enumerate(doc):
+            for w in (page.widgets() or []):
+                ftype = (w.field_type_string or "")
+                if ftype not in input_types:
+                    continue          # 도장/QR/서명 등은 건드리지 않음
+                v = values.get(w.field_name)
+                if ftype == "CheckBox":
+                    if v:
+                        plan.append((pi, fitz.Rect(w.rect), "check", None))
+                elif v not in (None, ""):
+                    plan.append((pi, fitz.Rect(w.rect), "text",
+                                 (str(v), w.text_fontsize, _acro_align(w.field_name))))
+        # 2) 입력 위젯 평탄화(빈 칸 포함 제거 → 인쇄/뷰어 일관)
         for page in doc:
             for w in (page.widgets() or []):
-                name = w.field_name
-                if name not in values:
-                    continue
-                v = values[name]
-                ftype = (w.field_type_string or "")
-                try:
-                    if ftype == "CheckBox":
-                        if v:
-                            w.field_value = True
-                            w.update()
-                    elif ftype in ("Text", "ComboBox", "ListBox"):
-                        if v is None or v == "":
-                            continue
-                        w.field_value = str(v)
-                        w.update()
-                except (ValueError, RuntimeError):
-                    continue  # 한 필드 실패가 전체 생성을 막지 않도록
+                if (w.field_type_string or "") in input_types:
+                    try:
+                        page.delete_widget(w)
+                    except Exception:  # noqa: BLE001
+                        pass
+        # 3) 값 그리기
+        for pi, rect, kind, payload in plan:
+            page = doc[pi]
+            if kind == "check":
+                _check(page, rect)
+            else:
+                text, size, align = payload
+                _draw(page, pi, rect, text, size, align)
+        # 4) 폼 필드 없는 자리(합계 등)에 우측정렬 텍스트
         for ov in (overlays or []):
             page = doc[ov.get("page", 0)]
             text = str(ov.get("text") or "")
             if not text:
                 continue
+            size = ov.get("size", 10)
+            _ensure_font(page, ov.get("page", 0))
+            tw = measure.text_length(text, size)
             x = ov.get("x")
-            if x is None and ov.get("right") is not None:  # 우측 정렬(합계 등)
-                x = ov["right"] - fitz.get_text_length(text, fontname="helv", fontsize=ov.get("size", 10))
-            page.insert_text((x or 0, ov["y"]), text, fontsize=ov.get("size", 10),
-                             fontname="helv", color=(0.09, 0.09, 0.11))
-        out = doc.tobytes()
+            if x is None and ov.get("right") is not None:
+                x = ov["right"] - tw
+            page.insert_text((x or 0, ov["y"]), text, fontsize=size, fontname=fontname,
+                             color=_FILL_RGB)
+        out = doc.tobytes(garbage=4, deflate=True)
     finally:
         doc.close()
     return out
