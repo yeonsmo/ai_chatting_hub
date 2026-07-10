@@ -34,6 +34,7 @@ def to_response(att: Attachment) -> AttachmentResponse:
         has_text=bool(att.text_content),
         kind=att.kind or "upload",
         origin=att.origin,
+        workflow_status=att.workflow_status,
         created_at=att.created_at,
     )
 

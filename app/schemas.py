@@ -50,6 +50,7 @@ class AttachmentResponse(BaseModel):
     has_text: bool = False
     kind: str = "upload"        # upload | generated
     origin: Optional[str] = None
+    workflow_status: Optional[str] = None   # None | held | submitted
     created_at: datetime
 
     class Config:

@@ -10,8 +10,9 @@ from app.database import AsyncSessionLocal, init_db
 from app.file_utils import ensure_upload_dir
 from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware, SecurityHeadersMiddleware
 from app.models import User, UserRole
+import asyncio
 from app.routers import (auth, chat, users, keys, files, projects, admin,
-                         settings_admin, minutes, reference, feedback, hr)
+                         settings_admin, minutes, reference, feedback, hr, documents)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -44,7 +45,23 @@ async def lifespan(app: FastAPI):
         except Exception as e:  # noqa: BLE001 — 시드 실패가 기동을 막지 않도록
             print(f"[INIT][경고] 자료실 시드 실패: {e}")
 
-    yield
+    # 보류 서류 자동삭제(1일 경과) 주기 정리 태스크
+    async def _purge_loop():
+        while True:
+            try:
+                async with AsyncSessionLocal() as db:
+                    n = await documents.purge_expired_held(db)
+                    if n:
+                        print(f"[CLEANUP] 만료된 보류 서류 {n}건 자동삭제")
+            except Exception as e:  # noqa: BLE001
+                print(f"[CLEANUP][경고] 보류 서류 정리 실패: {e}")
+            await asyncio.sleep(3600)   # 1시간마다
+
+    purge_task = asyncio.create_task(_purge_loop())
+    try:
+        yield
+    finally:
+        purge_task.cancel()
 
 
 app = FastAPI(title="Gabia AI 허브", lifespan=lifespan)
@@ -78,6 +95,7 @@ app.include_router(reference.router, prefix="/api")
 app.include_router(feedback.router, prefix="/api")
 app.include_router(hr.router, prefix="/api")
 app.include_router(hr.me_router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

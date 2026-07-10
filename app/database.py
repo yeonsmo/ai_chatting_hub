@@ -39,6 +39,11 @@ MIGRATION_STATEMENTS = [
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(120)',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS position VARCHAR(80)',
     'CREATE INDEX IF NOT EXISTS ix_users_employee_no ON users (employee_no)',
+    # v7: 서류 결재 워크플로우(기안/보류) + 보류 자동삭제
+    'ALTER TABLE attachments ADD COLUMN IF NOT EXISTS workflow_status VARCHAR(20)',
+    'ALTER TABLE attachments ADD COLUMN IF NOT EXISTS hr_ref VARCHAR(120)',
+    'ALTER TABLE attachments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP',
+    'CREATE INDEX IF NOT EXISTS ix_attachments_expires_at ON attachments (expires_at)',
 ]
 
 

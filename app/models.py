@@ -98,8 +98,12 @@ class Attachment(Base):
     size_bytes = Column(BigInteger, default=0)
     stored_name = Column(String(80), nullable=False)  # 디스크 상 파일명(uuid)
     text_content = Column(Text, nullable=True)        # 추출된 텍스트(모델 컨텍스트용)
-    kind = Column(String(20), default="upload", nullable=False)  # upload | generated
+    kind = Column(String(20), default="upload", nullable=False)  # upload | generated | reference | recording
     origin = Column(String(80), nullable=True)        # 생성 출처(도구명/모델키)
+    # 결재 워크플로우: 생성 서류의 기안/보류 상태. HR 등 외부 결재 연동.
+    workflow_status = Column(String(20), nullable=True)   # None | held | submitted
+    hr_ref = Column(String(120), nullable=True)           # 기안 시 HR이 부여한 문서 식별자
+    expires_at = Column(DateTime, nullable=True, index=True)  # 보류 문서 자동삭제 예정 시각
     created_at = Column(DateTime, default=datetime.utcnow)
 
     message = relationship("Message", back_populates="attachments", foreign_keys=[message_id])

@@ -1780,6 +1780,52 @@ function _dlCard(a, label){
       </div>
     </div>`;
 }
+// HR 결재 대상 서류(생성 도구 origin)
+const HR_DOC_ORIGINS=['create_expense_report','create_overtime_request'];
+function _wfBtns(id, held){
+  return `<button class="sm-btn" style="border-color:var(--accent); color:var(--accent); padding:6px 12px;" onclick="docSubmit(${id},this)">📤 기안</button>`+
+    (held
+      ? `<button class="sm-btn" style="padding:6px 12px;" onclick="docResume(${id},this)">▶ 보류 해제</button>`
+      : `<button class="sm-btn" style="padding:6px 12px;" onclick="docHold(${id},this)">⏸ 보류</button>`);
+}
+function _wfHTML(a){
+  if(!HR_DOC_ORIGINS.includes(a.origin)) return '';
+  if(a.workflow_status==='submitted')
+    return `<div id="wf-${a.id}" style="font:600 11.5px/1.4 var(--font-sans); color:#6ee7b7;">✅ 기안 완료 (HR 결재 진행중)</div>`;
+  const held=a.workflow_status==='held';
+  return `<div id="wf-${a.id}" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+    ${held?`<span style="font:500 10.5px/1.4 var(--font-sans); color:var(--warn);">⏸ 보류중 · 1일 후 자동삭제</span>`:''}
+    ${_wfBtns(a.id, held)}
+  </div>`;
+}
+async function docSubmit(id, btn){
+  if(!confirm('이 서류를 HR 결재로 기안할까요?\n(본인 사번으로 전송되고, 이후 HR 승인 절차가 진행됩니다)')) return;
+  btn.disabled=true;
+  try{
+    const r=await api('POST','/documents/'+id+'/submit');
+    const c=document.getElementById('wf-'+id);
+    if(c) c.outerHTML=`<div id="wf-${id}" style="font:600 11.5px/1.4 var(--font-sans); color:#6ee7b7;">✅ 기안 완료${r.approval_status?' · '+esc(r.approval_status):''}</div>`;
+    toast('HR로 기안했어요 🚀');
+  }catch(e){ btn.disabled=false; toast('기안 실패: '+(e.message||''),true); }
+}
+async function docHold(id, btn){
+  btn.disabled=true;
+  try{
+    await api('POST','/documents/'+id+'/hold');
+    const c=document.getElementById('wf-'+id);
+    if(c) c.innerHTML=`<span style="font:500 10.5px/1.4 var(--font-sans); color:var(--warn);">⏸ 보류중 · 1일 후 자동삭제</span> ${_wfBtns(id,true)}`;
+    toast('보류했어요. 1일 안에 기안하지 않으면 자동 삭제돼요');
+  }catch(e){ btn.disabled=false; toast('보류 실패: '+(e.message||''),true); }
+}
+async function docResume(id, btn){
+  btn.disabled=true;
+  try{
+    await api('POST','/documents/'+id+'/resume');
+    const c=document.getElementById('wf-'+id);
+    if(c) c.innerHTML=_wfBtns(id,false);
+    toast('보류를 해제했어요');
+  }catch(e){ btn.disabled=false; toast('해제 실패: '+(e.message||''),true); }
+}
 function genAttachmentsHTML(atts){
   if(!atts||!atts.length) return '';
   const imgs=atts.filter(a=>(a.content_type||'').startsWith('image/'));
@@ -1804,6 +1850,7 @@ function genAttachmentsHTML(atts){
         <div style="position:absolute; top:7px; left:8px; font:600 10px/1 var(--font-sans); color:#fff; background:rgba(17,17,20,0.62); padding:4px 8px; border-radius:6px; backdrop-filter:blur(4px);">📄 미리보기</div>
       </div>
       ${_dlCard(a,'⬇')}
+      ${_wfHTML(a)}
     </div>`;
   });
   docs.forEach(a=>{ html+=_dlCard(a,'⬇'); });
