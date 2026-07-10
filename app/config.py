@@ -58,6 +58,23 @@ class Settings(BaseSettings):
     hr_default_role: str = "user"               # 자동 생성 시 기본 역할
     hr_role_map: str = "{}"                      # 직급/직위→역할 매핑 JSON(예: {"부장":"manager"})
 
+    # SSO(하이웍스 등 OAuth2 로그인). 진짜 본인인증을 IdP에 위임. 비우면 비활성.
+    # 하이웍스 관리자/개발자센터에서 앱 등록 후 값 채우기(리다이렉트 URI = <허브>/api/auth/sso/callback).
+    sso_enabled: bool = False
+    sso_label: str = "하이웍스"
+    sso_authorize_url: str = ""
+    sso_token_url: str = ""
+    sso_userinfo_url: str = ""
+    sso_client_id: str = ""
+    sso_client_secret: str = ""
+    sso_redirect_uri: str = ""
+    sso_scope: str = ""
+    sso_userinfo_email_field: str = "email"       # 하이웍스 사용자정보 응답의 이메일 키
+    sso_userinfo_empno_field: str = "employee_no" # 사번 키(있으면 HR 사번과 매칭)
+    sso_userinfo_name_field: str = "name"
+    sso_auto_create: bool = False                 # 미등록 계정 자동 생성 여부
+    sso_default_role: str = "user"
+
     # 스킬/연동 SSRF 예외: 신뢰하는 사내 호스트만 사설 대역이어도 허용.
     # 콤마 구분. 와일드카드(*.example.com) / 정확한 호스트 / CIDR(192.168.0.0/24) 지원.
     # 기본값은 사내 도메인만. 비우면 모든 사설 대역 차단(가장 안전).
