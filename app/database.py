@@ -33,6 +33,12 @@ MIGRATION_STATEMENTS = [
     # v5: 스킬 감사 로그 — 외부 API로 무엇을 요청/수신했는지 최고관리자가 열람
     'ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS request_params TEXT',
     'ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS response_preview TEXT',
+    # v6: HR 연동 — 직원 매핑(사번)·인사정보
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_no VARCHAR(50)',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(100)',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(120)',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS position VARCHAR(80)',
+    'CREATE INDEX IF NOT EXISTS ix_users_employee_no ON users (employee_no)',
 ]
 
 

@@ -45,6 +45,18 @@ class Settings(BaseSettings):
     # 대화 중 "이미지 그려줘"를 자동 처리할 이미지 모델(라우팅 key). 비우면 kind=image 첫 라우팅 사용.
     image_model_key: str = ""
 
+    # HR 모듈 연동(직원 명부 동기화). 사내망 HR 서버 REST API로 계정·부서·재직상태를 맞춘다.
+    # 비우면 HR 동기화 비활성. 인증은 정적 API 키(헤더) 기본.
+    hr_base_url: str = ""                       # 예: https://hr.hpengineeringwork.com
+    hr_api_key: str = ""
+    hr_auth_header: str = "Authorization"       # 키를 실을 헤더명(예: X-API-Key)
+    hr_auth_prefix: str = "Bearer "             # 헤더 값 접두(예: "Bearer " 또는 "")
+    hr_employees_path: str = "/api/v1/employees"
+    hr_page_size: int = 100
+    hr_auto_create: bool = False                # HR에만 있는 직원 계정을 자동 생성할지
+    hr_default_role: str = "user"               # 자동 생성 시 기본 역할
+    hr_role_map: str = "{}"                      # 직급/직위→역할 매핑 JSON(예: {"부장":"manager"})
+
     # 스킬/연동 SSRF 예외: 신뢰하는 사내 호스트만 사설 대역이어도 허용.
     # 콤마 구분. 와일드카드(*.example.com) / 정확한 호스트 / CIDR(192.168.0.0/24) 지원.
     # 기본값은 사내 도메인만. 비우면 모든 사설 대역 차단(가장 안전).
