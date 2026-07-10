@@ -11,7 +11,7 @@ from app.file_utils import ensure_upload_dir
 from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware, SecurityHeadersMiddleware
 from app.models import User, UserRole
 from app.routers import (auth, chat, users, keys, files, projects, admin,
-                         settings_admin, minutes, reference)
+                         settings_admin, minutes, reference, feedback)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -75,6 +75,7 @@ app.include_router(projects.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(settings_admin.router, prefix="/api")
 app.include_router(reference.router, prefix="/api")
+app.include_router(feedback.router, prefix="/api")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

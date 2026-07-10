@@ -1,15 +1,86 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from app.database import get_db
 from app.dependencies import get_superadmin_user
-from app.models import User, Conversation, Message, UsageLog
+from app.models import User, Conversation, Message, UsageLog, Attachment, Feedback
 from app.routers.chat import _load_attachments_map
 from app.routers.files import to_response as attachment_response
 from app.schemas import AdminConversationResponse, MessageResponse, UsageLogResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/utilization")
+async def utilization(
+    days: int = 90,
+    _: User = Depends(get_superadmin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """직원별 AI 활용도 지표(최고관리자) — 인사평가/도입효과 분석용.
+    최근 N일 기준: 대화 수, 내가 보낸 메시지 수, 산출물 수, 활동일수, 도구·스킬 사용,
+    최근 활동, 남긴 평가(👍/👎), 토큰 사용량."""
+    days = max(1, min(days, 3650))
+    since = datetime.utcnow() - timedelta(days=days)
+
+    # 사용자 목록(최고관리자 본인 포함해 전원). 삭제된 사용자는 로그 username으로만 남음.
+    users = (await db.execute(select(User).order_by(User.id.asc()))).scalars().all()
+
+    async def _by_user(stmt):
+        return {row[0]: row[1:] for row in (await db.execute(stmt)).all()}
+
+    convs = await _by_user(
+        select(Conversation.user_id, func.count(Conversation.id))
+        .where(Conversation.created_at >= since).group_by(Conversation.user_id))
+    # 내가 보낸 메시지 수(활동량) — Message는 conversation 통해 user 연결
+    msgs = await _by_user(
+        select(Conversation.user_id, func.count(Message.id))
+        .join(Message, Message.conversation_id == Conversation.id)
+        .where(Message.role == "user", Message.created_at >= since)
+        .group_by(Conversation.user_id))
+    delivs = await _by_user(
+        select(Attachment.user_id, func.count(Attachment.id))
+        .where(Attachment.kind == "generated", Attachment.created_at >= since)
+        .group_by(Attachment.user_id))
+    # 활동일수 / 최근활동 / 토큰 — UsageLog 기준
+    act = await _by_user(
+        select(UsageLog.user_id,
+               func.count(func.distinct(func.date(UsageLog.created_at))),
+               func.max(UsageLog.created_at),
+               func.coalesce(func.sum(UsageLog.input_tokens), 0),
+               func.coalesce(func.sum(UsageLog.output_tokens), 0))
+        .where(UsageLog.created_at >= since, UsageLog.action.in_(["chat", "skill", "generate"]))
+        .group_by(UsageLog.user_id))
+    tools = await _by_user(
+        select(UsageLog.user_id, func.count(UsageLog.id))
+        .where(UsageLog.created_at >= since, UsageLog.action.in_(["skill", "generate"]))
+        .group_by(UsageLog.user_id))
+    fbs = await _by_user(
+        select(Feedback.user_id, func.count(Feedback.id),
+               func.coalesce(func.sum(case((Feedback.rating == "up", 1), else_=0)), 0))
+        .where(Feedback.created_at >= since).group_by(Feedback.user_id))
+
+    rows = []
+    for u in users:
+        a = act.get(u.id, (0, None, 0, 0))
+        active_days, last_at, in_tok, out_tok = a[0], a[1], a[2], a[3]
+        fb = fbs.get(u.id, (0, 0))
+        rows.append({
+            "user_id": u.id, "username": u.username, "role": u.role.value if hasattr(u.role, "value") else str(u.role),
+            "conversations": int(convs.get(u.id, (0,))[0] or 0),
+            "messages": int(msgs.get(u.id, (0,))[0] or 0),
+            "deliverables": int(delivs.get(u.id, (0,))[0] or 0),
+            "tool_uses": int(tools.get(u.id, (0,))[0] or 0),
+            "active_days": int(active_days or 0),
+            "tokens": int((in_tok or 0) + (out_tok or 0)),
+            "feedback_count": int(fb[0] or 0),
+            "feedback_up": int(fb[1] or 0),
+            "last_active": last_at.isoformat() if last_at else None,
+        })
+    # 활동량(메시지) 순 정렬
+    rows.sort(key=lambda r: (r["messages"], r["deliverables"]), reverse=True)
+    return {"days": days, "users": rows}
 
 
 @router.get("/conversations", response_model=list[AdminConversationResponse])
