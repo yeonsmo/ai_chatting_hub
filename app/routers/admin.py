@@ -68,6 +68,8 @@ async def utilization(
         fb = fbs.get(u.id, (0, 0))
         rows.append({
             "user_id": u.id, "username": u.username, "role": u.role.value if hasattr(u.role, "value") else str(u.role),
+            "name": u.name or "", "department": u.department or "", "position": u.position or "",
+            "employee_no": u.employee_no or "",
             "conversations": int(convs.get(u.id, (0,))[0] or 0),
             "messages": int(msgs.get(u.id, (0,))[0] or 0),
             "deliverables": int(delivs.get(u.id, (0,))[0] or 0),

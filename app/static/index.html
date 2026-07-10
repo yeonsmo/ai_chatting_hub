@@ -2458,9 +2458,11 @@ async function loadUtilTab(){
   const rows=(d.users||[]).map((u,i)=>{
     const rk=ROLE_LABELS[u.role]||u.role;
     const fb=u.feedback_count?`👍${u.feedback_up} / ${u.feedback_count}`:'—';
+    const disp=u.name||u.username;
     return `<tr style="border-bottom:1px solid var(--rim-hair);">
       <td style="padding:8px 6px; color:var(--fg-3);">${i+1}</td>
-      <td style="padding:8px 6px;"><b style="color:var(--fg-1);">${esc(u.username)}</b> <span style="color:var(--fg-3); font-size:10.5px;">${esc(rk)}</span></td>
+      <td style="padding:8px 6px;"><b style="color:var(--fg-1);">${esc(disp)}</b> <span style="color:var(--fg-3); font-size:10.5px;">${esc(rk)}</span></td>
+      <td style="padding:8px 6px; color:var(--fg-2); font-size:11px; white-space:nowrap;">${esc(u.department||'—')}</td>
       <td style="padding:8px 6px; text-align:right;">${u.conversations}</td>
       <td style="padding:8px 6px; text-align:right; font-weight:600;">${u.messages}</td>
       <td style="padding:8px 6px; text-align:right; color:var(--accent);">${u.deliverables}</td>
@@ -2482,6 +2484,7 @@ async function loadUtilTab(){
         <thead><tr style="border-bottom:1.5px solid var(--rim-hair); color:var(--fg-3); text-align:left;">
           <th style="padding:8px 6px; font-weight:600;">#</th>
           <th style="padding:8px 6px; font-weight:600;">직원</th>
+          <th style="padding:8px 6px; font-weight:600;">부서</th>
           <th style="padding:8px 6px; font-weight:600; text-align:right;">대화</th>
           <th style="padding:8px 6px; font-weight:600; text-align:right;">메시지</th>
           <th style="padding:8px 6px; font-weight:600; text-align:right;">산출물</th>
@@ -2491,7 +2494,7 @@ async function loadUtilTab(){
           <th style="padding:8px 6px; font-weight:600; text-align:center;">평가</th>
           <th style="padding:8px 6px; font-weight:600;">최근활동</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="10" style="padding:14px; color:var(--fg-3);">데이터가 없습니다</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="11" style="padding:14px; color:var(--fg-3);">데이터가 없습니다</td></tr>'}</tbody>
       </table>
     </div>
     <div style="font:400 11px/1.6 var(--font-sans); color:var(--fg-3); margin-top:12px;">
@@ -2511,6 +2514,26 @@ function roleOptionsHTML(selected, maxLevelExclusive){
     .map(r=>`<option value="${esc(r.key)}" ${r.key===selected?'selected':''}>${esc(r.label)}</option>`).join('');
 }
 
+/* ----- HR 동기화 (superadmin) ----- */
+async function hrSync(){
+  let cfg;
+  try{ cfg=await api('GET','/admin/hr/config'); }catch(e){ toast(e.message||'확인 실패',true); return; }
+  if(!cfg.configured){ toast('HR 연동이 아직 설정되지 않았어요 (.env HR_BASE_URL·HR_API_KEY)',true); return; }
+  if(!confirm(`HR(${cfg.host})와 직원 명부를 동기화할까요?\n· 재직자: 계정·부서·직급 갱신${cfg.auto_create?' (신규는 자동 생성)':''}\n· 퇴사/휴직자: 로그인 비활성`)) return;
+  toast('🔄 HR 동기화 중…');
+  let r;
+  try{ r=await api('POST','/admin/hr/sync'); }catch(e){ toast('동기화 실패: '+(e.message||''),true); return; }
+  let msg=`동기화 완료 — 조회 ${r.fetched}명 · 갱신 ${r.updated} · 생성 ${r.created.length} · 비활성 ${r.deactivated}`;
+  if(r.errors&&r.errors.length) msg+=` · 오류 ${r.errors.length}`;
+  toast(msg);
+  if(r.created&&r.created.length){
+    // 생성 계정의 임시 비밀번호는 이번 한 번만 확인 가능 → 안내
+    const lines=r.created.map(c=>`${c.username}  (사번 ${c.employee_no})  →  임시비번: ${c.temp_password}`).join('\n');
+    alert('신규 생성된 계정 '+r.created.length+'개의 임시 비밀번호입니다.\n(이 창을 닫으면 다시 볼 수 없어요 — 직원에게 전달하세요)\n\n'+lines);
+  }
+  loadUsersTab();
+}
+
 /* ----- 사용자 탭 ----- */
 async function loadUsersTab(){
   const body=document.getElementById('adminBody');
@@ -2527,7 +2550,10 @@ async function loadUsersTab(){
   body.innerHTML=`
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">사용자 목록 (${users.length})</div>
-      <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="showCreateUser()">+ 사용자 추가</button>
+      <div style="display:flex; gap:7px;">
+        ${me.role==='superadmin'?`<button class="sm-btn" style="border-color:rgba(6,182,212,0.35); color:#67e8f9; padding:8px 12px;" onclick="hrSync()" title="HR 명부로 계정·부서·재직상태 동기화">🔄 HR 동기화</button>`:''}
+        <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="showCreateUser()">+ 사용자 추가</button>
+      </div>
     </div>
     <div id="userFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
       <div style="font:600 12.5px/1 var(--font-sans); color:var(--fg-1); margin-bottom:10px;">새 사용자 생성</div>

@@ -22,6 +22,11 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
     is_active = Column(Boolean, default=True)
+    # HR 연동: 직원 매핑 키(사번)와 인사정보. HR 명부 동기화로 채워짐. 부서/직급별 집계에도 사용.
+    employee_no = Column(String(50), nullable=True, index=True)
+    name = Column(String(100), nullable=True)
+    department = Column(String(120), nullable=True)
+    position = Column(String(80), nullable=True)
     force_password_reset = Column(Boolean, default=False)
     token_version = Column(Integer, default=0, nullable=False)  # 증가 시 기존 JWT 전부 무효화
     created_at = Column(DateTime, default=datetime.utcnow)
