@@ -12,7 +12,7 @@ from app.middleware import IPWhitelistMiddleware, MaxBodySizeMiddleware, Securit
 from app.models import User, UserRole
 import asyncio
 from app.routers import (auth, chat, users, keys, files, projects, admin,
-                         settings_admin, minutes, reference, feedback, hr, documents)
+                         settings_admin, minutes, reference, feedback, hr, documents, sso)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -83,6 +83,7 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(sso.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(keys.router, prefix="/api")

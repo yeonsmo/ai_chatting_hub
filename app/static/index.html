@@ -399,6 +399,12 @@
       <input id="loginPw" type="password" placeholder="비밀번호" class="field" onkeydown="if(event.key==='Enter')login()">
       <button onclick="login()" id="loginBtn" class="primary-btn" style="padding:13px; border-radius:13px; font-size:14px;">로그인</button>
     </div>
+    <div id="ssoBox" class="hidden" style="margin-top:14px;">
+      <div style="display:flex; align-items:center; gap:10px; margin:4px 0 14px; color:var(--fg-3); font:400 11px/1 var(--font-sans);">
+        <div style="flex:1; height:1px; background:var(--rim-hair);"></div>또는<div style="flex:1; height:1px; background:var(--rim-hair);"></div>
+      </div>
+      <button id="ssoBtn" onclick="location.href='/api/auth/sso/login'" class="sm-btn" style="width:100%; padding:13px; border-radius:13px; font-size:13.5px; border-color:var(--rim-hair); color:var(--fg-1); background:var(--fill-1);">🔐 <span id="ssoLabel">SSO</span>로 로그인</button>
+    </div>
     <div style="text-align:center; margin-top:18px; font:400 11px/1.5 var(--font-sans); color:var(--fg-3);">사내 전용 · 계정은 관리자에게 문의하세요</div>
   </div>
 </div>
@@ -3280,15 +3286,33 @@ if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
 
+// SSO 콜백 처리: URL 프래그먼트(#sso=<jwt> / #sso_error=)를 읽어 토큰 저장
+function _consumeSsoHash(){
+  const h=location.hash||'';
+  const m=h.match(/[#&]sso=([^&]+)/);
+  if(m){ token=decodeURIComponent(m[1]); localStorage.setItem('token',token);
+    history.replaceState(null,'',location.pathname+location.search); return true; }
+  const e=h.match(/[#&]sso_error=([^&]+)/);
+  if(e){ history.replaceState(null,'',location.pathname+location.search);
+    setTimeout(()=>{ const el=document.getElementById('loginErr'); if(el){ el.textContent=decodeURIComponent(e[1]); el.classList.remove('hidden'); } },50); }
+  return false;
+}
+async function _initSsoButton(){
+  try{ const s=await fetch('/api/auth/sso/enabled').then(r=>r.json());
+    if(s&&s.enabled){ document.getElementById('ssoLabel').textContent=s.label||'SSO';
+      document.getElementById('ssoBox').classList.remove('hidden'); }
+  }catch(_){}
+}
 (async()=>{
+  _consumeSsoHash();
   if(token){
     try {
       me=await api('GET','/auth/me');
       if(me.force_password_reset) return showPage('resetPage');
       await initMain();
-    } catch(e){ showPage('loginPage'); }
+    } catch(e){ showPage('loginPage'); _initSsoButton(); }
   } else {
-    showPage('loginPage');
+    showPage('loginPage'); _initSsoButton();
   }
 })();
 </script>
