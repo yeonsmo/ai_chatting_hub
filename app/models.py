@@ -195,3 +195,18 @@ class UsageLog(Base):
     request_params = Column(Text, nullable=True)
     response_preview = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Feedback(Base):
+    """대화(작업) 단위 사용자 평가. 산출물이 나온 대화를 마칠 때 강제 수집.
+    rating(up/down) + reason(불편/좋았던 실제 경험, 한글 15자+). 사내 학습셋 큐레이션용."""
+    __tablename__ = "feedbacks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"),
+                             nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    username = Column(String(50), nullable=False)
+    rating = Column(String(10), nullable=False)    # up / down
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

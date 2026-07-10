@@ -675,6 +675,7 @@
       <button id="tabRef" class="tab-btn" onclick="switchTab('ref')">사내 자료실</button>
       <button id="tabConvs" class="tab-btn hidden" onclick="switchTab('convs')">대화 조회</button>
       <button id="tabLogs" class="tab-btn hidden" onclick="switchTab('logs')">사용 로그</button>
+      <button id="tabUtil" class="tab-btn hidden" onclick="switchTab('util')">AI 활용도</button>
     </div>
     <div id="adminBody" style="flex:1; overflow-y:auto; padding:18px 22px;"></div>
   </div>
@@ -817,6 +818,32 @@
     </div>
   </div>
 </div>
+
+<!-- ================= 작업 평가(강제) ================= -->
+<div id="fbModal" class="hidden" style="position:fixed; inset:0; z-index:80; background:rgba(10,10,14,0.66); backdrop-filter:blur(7px); display:flex; align-items:center; justify-content:center; padding:18px;">
+  <div class="modal-card" style="width:100%; max-width:520px; border-radius:var(--r-lg); background:var(--glass-chrome); border:1px solid var(--rim-hair); box-shadow:var(--shadow-3); padding:22px;">
+    <div style="font:700 17px/1.3 var(--font-sans); color:var(--fg-1);">이 작업, 어떠셨어요?</div>
+    <div style="font:400 12.5px/1.6 var(--font-sans); color:var(--fg-3); margin:6px 0 14px;">
+      방금 마친 작업 <b id="fbTitle" style="color:var(--accent);"></b> 에 대한 솔직한 평가를 남겨주세요.
+      여러분의 실제 경험이 <b style="color:var(--fg-1);">우리 회사 전용 AI</b>를 더 똑똑하게 만듭니다. (평가 후 다음 작업으로 넘어갈 수 있어요)
+    </div>
+    <div style="display:flex; gap:10px; margin-bottom:14px;">
+      <button id="fbUp" type="button" onclick="fbPick('up')" class="fb-rate" style="flex:1;">👍 좋았어요</button>
+      <button id="fbDown" type="button" onclick="fbPick('down')" class="fb-rate" style="flex:1;">👎 아쉬웠어요</button>
+    </div>
+    <label class="mt-lb" style="display:block; margin-bottom:5px;">평가 이유 <span style="color:var(--fg-3); font-weight:400;">(구체적일수록 좋아요 · 한글 15자 이상)</span></label>
+    <textarea id="fbReason" class="field" rows="4" oninput="_fbValidate()" placeholder="예: 견적서 항목 정렬은 좋았는데, 세부내역을 별도 줄로 넣는 걸 이해시키는 데 시간이 걸렸어요." style="resize:vertical; line-height:1.6;"></textarea>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+      <span id="fbHint" style="font:500 11.5px/1.4 var(--font-sans); color:var(--fg-3);"></span>
+      <button id="fbSubmit" type="button" onclick="fbSubmit()" class="primary-btn" style="padding:9px 20px; border-radius:11px;" disabled>제출하고 계속</button>
+    </div>
+  </div>
+</div>
+<style>
+  .fb-rate{ padding:14px 10px; border-radius:13px; border:1.5px solid var(--rim-hair); background:var(--fill-1); color:var(--fg-2); font:600 14px/1 var(--font-sans); cursor:pointer; transition:all .15s; }
+  .fb-rate:hover{ border-color:var(--accent); color:var(--fg-1); }
+  .fb-rate.sel{ border-color:var(--accent); background:rgba(255,122,77,0.14); color:var(--accent); box-shadow:0 0 0 3px rgba(255,122,77,0.12); }
+</style>
 
 <!-- ================= 테마 색상 팝오버 ================= -->
 <div id="accentMenu" class="hidden" style="position:fixed; z-index:70; width:236px; padding:14px; border-radius:var(--r-lg); background:var(--glass-chrome); backdrop-filter:blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat)); border:1px solid var(--rim-hair); box-shadow:var(--shadow-3), inset 0 1px 0 var(--rim-light);">
@@ -1620,7 +1647,61 @@ function welcomeHTML(){
   </div>`;
 }
 
-function newChat(projId){
+// ── 작업 평가(강제) ───────────────────────────────────────────
+let _fbResolve=null, _fbConv=null, _fbRating=null;
+function fbPick(r){
+  _fbRating=r;
+  document.getElementById('fbUp').classList.toggle('sel', r==='up');
+  document.getElementById('fbDown').classList.toggle('sel', r==='down');
+  _fbValidate();
+}
+function _fbCount(){
+  const s=document.getElementById('fbReason').value.trim();
+  const nospace=s.replace(/\s+/g,''); const hangul=/[가-힣]/.test(s);
+  return {n:nospace.length, hangul, ok: nospace.length>=15 && hangul};
+}
+function _fbValidate(){
+  const c=_fbCount(), ok=_fbRating && c.ok;
+  document.getElementById('fbSubmit').disabled=!ok;
+  document.getElementById('fbHint').textContent =
+    !_fbRating ? '먼저 👍/👎 를 선택해주세요'
+    : !c.hangul ? '한글로 작성해주세요'
+    : c.n<15 ? `한글 ${c.n}/15자 이상`
+    : '작성 완료 ✓';
+}
+function showFeedbackModal(pending){
+  return new Promise(resolve=>{
+    _fbResolve=resolve; _fbConv=pending.conversation_id; _fbRating=null;
+    document.getElementById('fbTitle').textContent='"'+(pending.title||'작업')+'"';
+    document.getElementById('fbReason').value='';
+    document.getElementById('fbUp').classList.remove('sel');
+    document.getElementById('fbDown').classList.remove('sel');
+    _fbValidate();
+    document.getElementById('fbModal').classList.remove('hidden');
+    setTimeout(()=>document.getElementById('fbReason').focus(),50);
+  });
+}
+async function fbSubmit(){
+  const c=_fbCount(); if(!_fbRating||!c.ok) return;
+  const btn=document.getElementById('fbSubmit'); btn.disabled=true;
+  try{
+    await api('POST','/feedback',{conversation_id:_fbConv, rating:_fbRating,
+      reason:document.getElementById('fbReason').value.trim()});
+    document.getElementById('fbModal').classList.add('hidden');
+    toast('평가 감사합니다! 🙏');
+    const r=_fbResolve; _fbResolve=null; if(r) r(true);
+  }catch(e){ btn.disabled=false; toast(e.message||'제출에 실패했어요',true); }
+}
+// 산출물이 있는 미평가 대화가 있으면 강제 평가 후 진행(최고관리자는 면제)
+async function ensureFeedback(){
+  if(me && me.role==='superadmin') return true;
+  let p; try{ p=await api('GET','/feedback/pending'); }catch(_){ return true; }
+  if(!p || !p.pending) return true;
+  return await showFeedbackModal(p.pending);
+}
+
+async function newChat(projId){
+  if(!(await ensureFeedback())) return;   // 이전 작업 평가 후 새 작업 시작
   convId=null; viewingProject=null;
   activeProjectId=projId||null;
   chatViewMode(true);
@@ -1633,6 +1714,7 @@ function newChat(projId){
 }
 
 async function loadConv(id){
+  if(id!==convId && !(await ensureFeedback())) return;   // 다른 작업으로 넘어가기 전 평가
   try {
     convId=id; viewingProject=null; activeProjectId=null;
     chatViewMode(true);
@@ -2290,6 +2372,7 @@ function openAdmin(){
   auditUnlocked=false; auditTapCount=0;
   document.getElementById('tabConvs').classList.add('hidden');
   document.getElementById('tabLogs').classList.add('hidden');
+  document.getElementById('tabUtil').classList.add('hidden');
   document.getElementById('adminModal').classList.remove('hidden');
   switchTab('users');
 }
@@ -2303,6 +2386,7 @@ function auditTapReveal(){
     auditTapCount=0; auditUnlocked=true;
     document.getElementById('tabConvs').classList.remove('hidden');
     document.getElementById('tabLogs').classList.remove('hidden');
+    document.getElementById('tabUtil').classList.remove('hidden');
     toast('감사 메뉴가 열렸습니다');
     switchTab('logs');
   }
@@ -2310,11 +2394,11 @@ function auditTapReveal(){
 function closeAdmin(){ document.getElementById('adminModal').classList.add('hidden'); }
 function switchTab(t){
   adminTab=t;
-  ['users','keys','routes','integ','ref','convs','logs'].forEach(x=>{
+  ['users','keys','routes','integ','ref','convs','logs','util'].forEach(x=>{
     document.getElementById('tab'+x[0].toUpperCase()+x.slice(1)).classList.toggle('on', x===t);
   });
   ({users:loadUsersTab, keys:loadKeysTab, routes:loadRoutesTab, integ:loadIntegTab,
-    ref:loadRefTab, convs:loadConvsTab, logs:loadLogsTab})[t]();
+    ref:loadRefTab, convs:loadConvsTab, logs:loadLogsTab, util:loadUtilTab})[t]();
 }
 
 /* ----- 사내 자료실 탭 ----- */
@@ -2359,6 +2443,60 @@ async function refDelete(id, btn){
   btn.disabled=true;
   try{ await api('DELETE','/reference/'+id); toast('삭제되었습니다'); loadRefTab(); }
   catch(e){ btn.disabled=false; toast(e.message||'삭제 실패',true); }
+}
+
+/* ----- AI 활용도 탭 (superadmin) ----- */
+let _utilDays=90;
+async function loadUtilTab(){
+  const body=document.getElementById('adminBody');
+  body.innerHTML='<div style="color:var(--fg-3); font-size:13px;">집계 중…</div>';
+  let d;
+  try{ d=await api('GET','/admin/utilization?days='+_utilDays); }
+  catch(e){ body.innerHTML='<div style="color:#fca5a5;">'+esc(e.message||'불러오기 실패')+'</div>'; return; }
+  const fmtLast=s=>s?fmtDate(s):'—';
+  const fmtTok=n=>n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'K':String(n||0);
+  const rows=(d.users||[]).map((u,i)=>{
+    const rk=ROLE_LABELS[u.role]||u.role;
+    const fb=u.feedback_count?`👍${u.feedback_up} / ${u.feedback_count}`:'—';
+    return `<tr style="border-bottom:1px solid var(--rim-hair);">
+      <td style="padding:8px 6px; color:var(--fg-3);">${i+1}</td>
+      <td style="padding:8px 6px;"><b style="color:var(--fg-1);">${esc(u.username)}</b> <span style="color:var(--fg-3); font-size:10.5px;">${esc(rk)}</span></td>
+      <td style="padding:8px 6px; text-align:right;">${u.conversations}</td>
+      <td style="padding:8px 6px; text-align:right; font-weight:600;">${u.messages}</td>
+      <td style="padding:8px 6px; text-align:right; color:var(--accent);">${u.deliverables}</td>
+      <td style="padding:8px 6px; text-align:right;">${u.tool_uses}</td>
+      <td style="padding:8px 6px; text-align:right;">${u.active_days}</td>
+      <td style="padding:8px 6px; text-align:right; color:var(--fg-3);">${fmtTok(u.tokens)}</td>
+      <td style="padding:8px 6px; text-align:center;">${fb}</td>
+      <td style="padding:8px 6px; color:var(--fg-3); font-size:10.5px; white-space:nowrap;">${fmtLast(u.last_active)}</td>
+    </tr>`;
+  }).join('');
+  const chip=(v,l)=>`<button class="sm-btn ${_utilDays===v?'':''}" onclick="_utilDays=${v};loadUtilTab()" style="padding:5px 11px; ${_utilDays===v?'border-color:var(--accent); color:var(--accent);':''}">${l}</button>`;
+  body.innerHTML=`
+    <div style="font:400 12.5px/1.6 var(--font-sans); color:var(--fg-2); margin-bottom:10px;">
+      직원별 AI 활용도 지표입니다. <span style="color:var(--fg-3);">최근 <b>${d.days}일</b> 기준 · 활동량(메시지) 순.</span>
+    </div>
+    <div style="display:flex; gap:6px; margin-bottom:12px;">${chip(30,'30일')}${chip(90,'90일')}${chip(365,'1년')}</div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font:400 12px/1.4 var(--font-sans); min-width:720px;">
+        <thead><tr style="border-bottom:1.5px solid var(--rim-hair); color:var(--fg-3); text-align:left;">
+          <th style="padding:8px 6px; font-weight:600;">#</th>
+          <th style="padding:8px 6px; font-weight:600;">직원</th>
+          <th style="padding:8px 6px; font-weight:600; text-align:right;">대화</th>
+          <th style="padding:8px 6px; font-weight:600; text-align:right;">메시지</th>
+          <th style="padding:8px 6px; font-weight:600; text-align:right;">산출물</th>
+          <th style="padding:8px 6px; font-weight:600; text-align:right;">도구</th>
+          <th style="padding:8px 6px; font-weight:600; text-align:right;">활동일</th>
+          <th style="padding:8px 6px; font-weight:600; text-align:right;">토큰</th>
+          <th style="padding:8px 6px; font-weight:600; text-align:center;">평가</th>
+          <th style="padding:8px 6px; font-weight:600;">최근활동</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="10" style="padding:14px; color:var(--fg-3);">데이터가 없습니다</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div style="font:400 11px/1.6 var(--font-sans); color:var(--fg-3); margin-top:12px;">
+      · <b>메시지</b>=직원이 보낸 질문 수(활동량) · <b>산출물</b>=생성 문서/이미지 · <b>도구</b>=서류생성·이미지·연동 호출 · <b>평가</b>=남긴 피드백(👍/전체)
+    </div>`;
 }
 
 let settingsMeta=null; // {providers:[{key,label,extra_fields}], roles:[{key,label,level}]}
