@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case
 from app.database import get_db
 from app.dependencies import get_superadmin_user
 from app.models import User, Conversation, Message, UsageLog, Attachment, Feedback
-from app.routers.chat import _load_attachments_map
+from app.routers.chat import _load_attachments_map, _month_start
 from app.routers.files import to_response as attachment_response
 from app.schemas import AdminConversationResponse, MessageResponse, UsageLogResponse
 
@@ -60,6 +61,13 @@ async def utilization(
         select(Feedback.user_id, func.count(Feedback.id),
                func.coalesce(func.sum(case((Feedback.rating == "up", 1), else_=0)), 0))
         .where(Feedback.created_at >= since).group_by(Feedback.user_id))
+    # 이번 달 토큰(한도 대비 표시용) — 활용도 기간(N일)과 별개로 월 단위 집계
+    month_tok = await _by_user(
+        select(UsageLog.user_id,
+               func.coalesce(func.sum(UsageLog.input_tokens), 0)
+               + func.coalesce(func.sum(UsageLog.output_tokens), 0))
+        .where(UsageLog.action == "chat", UsageLog.status == "success",
+               UsageLog.created_at >= _month_start()).group_by(UsageLog.user_id))
 
     rows = []
     for u in users:
@@ -79,6 +87,8 @@ async def utilization(
             "feedback_count": int(fb[0] or 0),
             "feedback_up": int(fb[1] or 0),
             "last_active": last_at.isoformat() if last_at else None,
+            "monthly_token_limit": int(u.monthly_token_limit or 0),
+            "month_tokens": int(month_tok.get(u.id, (0,))[0] or 0),
         })
     # 활동량(메시지) 순 정렬
     rows.sort(key=lambda r: (r["messages"], r["deliverables"]), reverse=True)
@@ -206,3 +216,75 @@ async def usage_summary(
         }
         for username, count, in_tok, out_tok, last_used in result.all()
     ]
+
+
+class TokenLimitBody(BaseModel):
+    monthly_token_limit: int = 0  # 0 = 무제한
+
+
+@router.post("/users/{user_id}/token-limit")
+async def set_token_limit(
+    user_id: int,
+    body: TokenLimitBody,
+    _: User = Depends(get_superadmin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """사용자 개인별 월 토큰 한도 설정(최고관리자). 0/음수는 무제한(None)으로 저장."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+    limit = int(body.monthly_token_limit or 0)
+    user.monthly_token_limit = limit if limit > 0 else None
+    await db.commit()
+    return {"user_id": user.id, "monthly_token_limit": int(user.monthly_token_limit or 0)}
+
+
+@router.get("/usage/{user_id}")
+async def user_usage_detail(
+    user_id: int,
+    _: User = Depends(get_superadmin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """특정 사용자의 이번 달 사용 상세(최고관리자) — 어디에 사용 비중이 높은지.
+    모델별·용도별(대화/스킬/생성) 토큰·횟수 분해."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+    since = _month_start()
+
+    tok = (func.coalesce(func.sum(UsageLog.input_tokens), 0)
+           + func.coalesce(func.sum(UsageLog.output_tokens), 0))
+    base = (UsageLog.user_id == user_id, UsageLog.created_at >= since)
+
+    # 모델별(대화 토큰 기준)
+    by_model = (await db.execute(
+        select(UsageLog.model, func.count(UsageLog.id), tok)
+        .where(*base, UsageLog.action == "chat", UsageLog.status == "success")
+        .group_by(UsageLog.model).order_by(tok.desc()))).all()
+    # 용도별(action) — 대화/스킬/생성 등 어디에 많이 쓰는지
+    by_action = (await db.execute(
+        select(UsageLog.action, func.count(UsageLog.id), tok)
+        .where(*base).group_by(UsageLog.action).order_by(func.count(UsageLog.id).desc()))).all()
+    # 생성 산출물 유형별(origin) — 견적서/회의록 등
+    by_origin = (await db.execute(
+        select(Attachment.origin, func.count(Attachment.id))
+        .where(Attachment.user_id == user_id, Attachment.kind == "generated",
+               Attachment.created_at >= since)
+        .group_by(Attachment.origin).order_by(func.count(Attachment.id).desc()))).all()
+
+    total = int((await db.execute(
+        select(tok).where(*base, UsageLog.action == "chat",
+                          UsageLog.status == "success"))).scalar() or 0)
+    now = datetime.utcnow()
+    return {
+        "user_id": user.id, "username": user.username,
+        "name": user.name or "", "department": user.department or "",
+        "month": f"{now.year}-{now.month:02d}",
+        "monthly_token_limit": int(user.monthly_token_limit or 0),
+        "total_tokens": total,
+        "by_model": [{"model": m or "(미지정)", "count": int(c), "tokens": int(t)}
+                     for m, c, t in by_model],
+        "by_action": [{"action": a or "(미지정)", "count": int(c), "tokens": int(t)}
+                      for a, c, t in by_action],
+        "by_origin": [{"origin": o or "(미지정)", "count": int(c)} for o, c in by_origin],
+    }
