@@ -61,12 +61,13 @@ async def utilization(
         select(Feedback.user_id, func.count(Feedback.id),
                func.coalesce(func.sum(case((Feedback.rating == "up", 1), else_=0)), 0))
         .where(Feedback.created_at >= since).group_by(Feedback.user_id))
-    # 이번 달 토큰(한도 대비 표시용) — 활용도 기간(N일)과 별개로 월 단위 집계
+    # 이번 달 토큰(한도 대비 표시용) — 활용도 기간(N일)과 별개로 월 단위 집계.
+    # 한도가 모든 토큰 사용을 합산하므로 여기서도 action 필터 없이 전량 집계(일관성).
     month_tok = await _by_user(
         select(UsageLog.user_id,
                func.coalesce(func.sum(UsageLog.input_tokens), 0)
                + func.coalesce(func.sum(UsageLog.output_tokens), 0))
-        .where(UsageLog.action == "chat", UsageLog.status == "success",
+        .where(UsageLog.status == "success",
                UsageLog.created_at >= _month_start()).group_by(UsageLog.user_id))
 
     rows = []
@@ -261,10 +262,11 @@ async def user_usage_detail(
         select(UsageLog.model, func.count(UsageLog.id), tok)
         .where(*base, UsageLog.action == "chat", UsageLog.status == "success")
         .group_by(UsageLog.model).order_by(tok.desc()))).all()
-    # 용도별(action) — 대화/스킬/생성 등 어디에 많이 쓰는지
+    # 용도별(action) — 대화/스킬/생성 등 어디에 많이 쓰는지. 성공 호출만(한도·총합과 동일 기준)
     by_action = (await db.execute(
         select(UsageLog.action, func.count(UsageLog.id), tok)
-        .where(*base).group_by(UsageLog.action).order_by(func.count(UsageLog.id).desc()))).all()
+        .where(*base, UsageLog.status == "success")
+        .group_by(UsageLog.action).order_by(func.count(UsageLog.id).desc()))).all()
     # 생성 산출물 유형별(origin) — 견적서/회의록 등
     by_origin = (await db.execute(
         select(Attachment.origin, func.count(Attachment.id))

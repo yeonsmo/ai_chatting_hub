@@ -212,7 +212,7 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
     # ---- 개인별 월 토큰 한도 초과 차단 (0/None = 무제한) ----
     limit = int(current_user.monthly_token_limit or 0)
     if limit > 0:
-        used = await month_chat_tokens(db, current_user.id)
+        used = await month_token_usage(db, current_user.id)
         if used >= limit:
             raise HTTPException(
                 status_code=429,
@@ -800,13 +800,14 @@ def _month_start() -> datetime:
     return datetime(now.year, now.month, 1)
 
 
-async def month_chat_tokens(db: AsyncSession, user_id: int) -> int:
-    """이번 달 대화 토큰 합계(한도 판정용)."""
+async def month_token_usage(db: AsyncSession, user_id: int) -> int:
+    """이번 달 토큰 총사용량(한도 판정용). 대화뿐 아니라 이미지 생성·스킬 등
+    토큰을 소비하는 모든 성공 호출을 합산해 한도 우회를 막는다."""
     r = await db.execute(
         select(func.coalesce(func.sum(UsageLog.input_tokens), 0)
                + func.coalesce(func.sum(UsageLog.output_tokens), 0))
-        .where(UsageLog.user_id == user_id, UsageLog.action == "chat",
-               UsageLog.status == "success", UsageLog.created_at >= _month_start())
+        .where(UsageLog.user_id == user_id, UsageLog.status == "success",
+               UsageLog.created_at >= _month_start())
     )
     return int(r.scalar() or 0)
 
@@ -831,11 +832,13 @@ async def my_usage(
         )
     )
     in_tok, out_tok, count = result.one()
+    # 한도는 모든 토큰 사용(대화+이미지+스킬)을 합산하므로, 게이지 total도 동일 기준으로 맞춘다.
+    total = await month_token_usage(db, current_user.id)
     return {
         "month": f"{now.year}-{now.month:02d}",
         "input_tokens": int(in_tok),
         "output_tokens": int(out_tok),
-        "total_tokens": int(in_tok) + int(out_tok),
+        "total_tokens": total,
         "chat_count": int(count),
         "limit": int(current_user.monthly_token_limit or 0),
     }
