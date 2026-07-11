@@ -44,6 +44,8 @@ MIGRATION_STATEMENTS = [
     'ALTER TABLE attachments ADD COLUMN IF NOT EXISTS hr_ref VARCHAR(120)',
     'ALTER TABLE attachments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP',
     'CREATE INDEX IF NOT EXISTS ix_attachments_expires_at ON attachments (expires_at)',
+    # v8: 개인별 월 토큰 한도
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_token_limit BIGINT',
 ]
 
 

@@ -209,6 +209,17 @@ async def _prepare_send(request: MessageCreate, http_request: Request,
     if not content and not request.attachment_ids:
         raise HTTPException(status_code=400, detail="메시지 내용을 입력해주세요")
 
+    # ---- 개인별 월 토큰 한도 초과 차단 (0/None = 무제한) ----
+    limit = int(current_user.monthly_token_limit or 0)
+    if limit > 0:
+        used = await month_chat_tokens(db, current_user.id)
+        if used >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail=(f"이번 달 토큰 한도({limit:,})를 모두 사용했습니다. "
+                        f"관리자에게 한도 조정을 요청하세요."),
+            )
+
     # ---- 첨부파일 검증 (내 소유 + 아직 미연결) ----
     attachments: list[Attachment] = []
     if request.attachment_ids:
@@ -784,14 +795,29 @@ async def delete_conversation(
     return {"message": "대화가 삭제되었습니다"}
 
 
+def _month_start() -> datetime:
+    now = datetime.utcnow()
+    return datetime(now.year, now.month, 1)
+
+
+async def month_chat_tokens(db: AsyncSession, user_id: int) -> int:
+    """이번 달 대화 토큰 합계(한도 판정용)."""
+    r = await db.execute(
+        select(func.coalesce(func.sum(UsageLog.input_tokens), 0)
+               + func.coalesce(func.sum(UsageLog.output_tokens), 0))
+        .where(UsageLog.user_id == user_id, UsageLog.action == "chat",
+               UsageLog.status == "success", UsageLog.created_at >= _month_start())
+    )
+    return int(r.scalar() or 0)
+
+
 @router.get("/usage/me")
 async def my_usage(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """이번 달 내 토큰 사용량(사이드바 표시용)."""
+    """이번 달 내 토큰 사용량(사이드바 표시용). 한도가 설정돼 있으면 함께 반환."""
     now = datetime.utcnow()
-    month_start = datetime(now.year, now.month, 1)
     result = await db.execute(
         select(
             func.coalesce(func.sum(UsageLog.input_tokens), 0),
@@ -801,7 +827,7 @@ async def my_usage(
             UsageLog.user_id == current_user.id,
             UsageLog.action == "chat",
             UsageLog.status == "success",
-            UsageLog.created_at >= month_start,
+            UsageLog.created_at >= _month_start(),
         )
     )
     in_tok, out_tok, count = result.one()
@@ -811,4 +837,5 @@ async def my_usage(
         "output_tokens": int(out_tok),
         "total_tokens": int(in_tok) + int(out_tok),
         "chat_count": int(count),
+        "limit": int(current_user.monthly_token_limit or 0),
     }

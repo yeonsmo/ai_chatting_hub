@@ -27,6 +27,7 @@ class User(Base):
     name = Column(String(100), nullable=True)
     department = Column(String(120), nullable=True)
     position = Column(String(80), nullable=True)
+    monthly_token_limit = Column(BigInteger, nullable=True)  # 월 토큰 한도(0/None=무제한)
     force_password_reset = Column(Boolean, default=False)
     token_version = Column(Integer, default=0, nullable=False)  # 증가 시 기존 JWT 전부 무효화
     created_at = Column(DateTime, default=datetime.utcnow)
