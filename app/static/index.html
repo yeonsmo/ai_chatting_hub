@@ -3064,6 +3064,12 @@ async function loadIntegTab(){
     </div>
     <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-3); margin-bottom:12px;">AI가 대화 중 자동으로 호출하는 도구입니다. <b>최소 역할</b>로 권한별 사용을 제한합니다 (예: 담당자 이상만 결재 조회 가능).</div>
     <div style="font:400 10.5px/1.6 var(--font-sans); color:#fcd34d; background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.25); border-radius:10px; padding:8px 11px; margin-bottom:12px;">⚠ 보안 주의: 파라미터 값은 AI(사용자 입력·문서 내용의 영향)가 채웁니다. <b>다른 사람의 데이터에 접근할 수 있는 식별자(사번·사용자ID 등)를 파라미터로 받는 스킬</b>은, 그 파라미터가 호출자 본인으로 제한된다는 보장이 없습니다. 민감 데이터 조회 스킬은 대상 API가 <b>호출자 신원 기준으로 스스로 권한을 확인</b>하도록 설계하세요.</div>
+    <div style="margin-bottom:12px;">
+      <div style="font:600 10.5px/1 var(--font-sans); color:var(--accent); margin-bottom:7px;">⚡ 프리셋으로 빠르게 추가 <span style="color:var(--fg-3); font-weight:400;">— 클릭하면 폼이 자동으로 채워져요. 연동만 고르고 [추가] 누르면 끝!</span></div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        ${SKILL_PRESETS.map((p,i)=>`<button class="sm-btn" style="padding:5px 11px; font-size:11px;" onclick="applySkillPreset(${i})">${p.emoji||'🔧'} ${esc(p.title)}</button>`).join('')}
+      </div>
+    </div>
     <div id="skillFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
         <input id="sName" class="field" placeholder="스킬 이름 (영문, 예: hiworks_approval)">
@@ -3127,6 +3133,55 @@ async function deleteInteg(id){
   if(!await openConfirm('이 연동과 소속 스킬을 모두 삭제하시겠습니까?')) return;
   try{ await api('DELETE',`/settings/integrations/${id}`); loadIntegTab(); }
   catch(e){ toast(e.message,true); }
+}
+/* 자주 쓰는 스킬 프리셋 — 클릭하면 스킬 폼을 자동으로 채운다(JSON 손으로 안 써도 됨).
+   hint: 연동 목록에서 이름에 이 단어가 있으면 자동 선택. warn: 민감/식별자 파라미터 경고. */
+const SKILL_PRESETS=[
+  {title:'HR 직원 조회', emoji:'👥', name:'hr_employee_lookup', disp:'HR 직원 명부 조회', hint:'HR',
+   desc:'직원의 이름·사번·부서·직급·재직상태·입사일을 물으면 호출한다. HR 직원 명부를 조회한다.',
+   method:'GET', path:'/api/v1/employees', query:'{"q":"{query}"}',
+   params:'[{"name":"query","type":"string","description":"이름/사번/부서 등 검색어","required":false}]',
+   role:'manager'},
+  {title:'HR 연차 조회', emoji:'🏖', name:'hr_leave_balance', disp:'연차 잔여/사용 조회', hint:'HR', warn:true,
+   desc:'연차 잔여일수·사용일수를 물으면 호출한다. 사번 기준으로 조회한다.',
+   method:'GET', path:'/api/v1/employees/{emp_no}/leave', query:'',
+   params:'[{"name":"emp_no","type":"string","description":"조회할 직원 사번","required":true}]',
+   role:'manager'},
+  {title:'HR 근태 조회', emoji:'🕘', name:'hr_attendance', disp:'근태 조회', hint:'HR', warn:true,
+   desc:'출퇴근·근태 기록을 물으면 호출한다. 사번·기간 기준으로 조회한다.',
+   method:'GET', path:'/api/v1/employees/{emp_no}/attendance', query:'{"from":"{from}","to":"{to}"}',
+   params:'[{"name":"emp_no","type":"string","description":"사번","required":true},{"name":"from","type":"string","description":"시작일(YYYY-MM-DD)","required":false},{"name":"to","type":"string","description":"종료일(YYYY-MM-DD)","required":false}]',
+   role:'manager'},
+  {title:'견적 조회', emoji:'📄', name:'quotation_search', disp:'견적프로그램 조회', hint:'견적',
+   desc:'회사 내부 견적을 조회하거나 견적번호·거래처로 찾을 때 호출한다.',
+   method:'GET', path:'/api/v1/quotes', query:'{"q":"{query}"}',
+   params:'[{"name":"query","type":"string","description":"견적번호/거래처/품목 등 검색어","required":false}]',
+   role:'user'},
+  {title:'재고 조회', emoji:'📦', name:'inventory_search', disp:'재고/안전재고 조회', hint:'재고',
+   desc:'품명이나 관리번호로 현재고·안전재고를 물으면 호출한다. 비슷한 품명도 함께 안내한다.',
+   method:'GET', path:'/items', query:'{"q":"{query}"}',
+   params:'[{"name":"query","type":"string","description":"품명/관리번호 검색어","required":true}]',
+   role:'user'},
+  {title:'자산/QR 조회', emoji:'🔎', name:'asset_search', disp:'QR 재고조사 서치', hint:'자산',
+   desc:'계측장비 등 개체 자산(시리얼·상태·검교정일·차기교정일)을 검교정·자산으로 물으면 호출한다.',
+   method:'GET', path:'/assets', query:'{"q":"{query}"}',
+   params:'[{"name":"query","type":"string","description":"자산명/시리얼/관리번호 검색어","required":true}]',
+   role:'user'},
+];
+function applySkillPreset(i){
+  const p=SKILL_PRESETS[i]; if(!p) return;
+  document.getElementById('skillFormBox').classList.remove('hidden');
+  const set=(id,v)=>{const el=document.getElementById(id); if(el!=null&&v!=null) el.value=v;};
+  set('sName',p.name); set('sTitle',p.disp); set('sDesc',p.desc);
+  set('sMethod',p.method||'GET'); set('sPath',p.path||''); set('sQuery',p.query||'');
+  set('sParams',p.params||''); set('sTimeout',20);
+  const roleSel=document.getElementById('sRole'); if(roleSel&&p.role) roleSel.value=p.role;
+  // 연동 자동 선택(이름에 hint 포함된 것)
+  const integSel=document.getElementById('sInteg');
+  if(integSel&&p.hint){ for(const o of integSel.options){ if((o.text||'').includes(p.hint)){ integSel.value=o.value; break; } } }
+  document.getElementById('skillFormBox').scrollIntoView({behavior:'smooth',block:'nearest'});
+  toast(p.warn ? `'${p.title}' 불러옴 — ⚠ 사번 등 식별자 파라미터는 대상 API가 권한 확인하도록 하세요`
+               : `'${p.title}' 프리셋을 불러왔어요. 연동 선택 후 [추가]`);
 }
 async function createSkill(){
   let query=null, params=[];
