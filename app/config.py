@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     hr_auth_prefix: str = "Bearer "             # 헤더 값 접두(예: "Bearer " 또는 "")
     hr_employees_path: str = "/api/v1/employees"
     hr_documents_path: str = "/api/v1/documents/ingest"   # 기안 서류 전송(결재 연동)
+    # 결재 상태 조회(폴링). {ref} 자리에 HR 문서 식별자 치환(없으면 경로 끝에 붙임). 비우면 폴링 안 함.
+    hr_document_status_path: str = ""     # 예: /api/v1/documents/{ref}
+    hr_callback_token: str = ""           # HR→허브 승인 콜백 인증 토큰(설정 시 콜백 허용)
     hr_page_size: int = 100
     hr_auto_create: bool = False                # HR에만 있는 직원 계정을 자동 생성할지
     hr_default_role: str = "user"               # 자동 생성 시 기본 역할

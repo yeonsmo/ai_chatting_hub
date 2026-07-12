@@ -51,6 +51,7 @@ class AttachmentResponse(BaseModel):
     kind: str = "upload"        # upload | generated
     origin: Optional[str] = None
     workflow_status: Optional[str] = None   # None | held | submitted
+    approval_status: Optional[str] = None   # pending | approved | rejected
     created_at: datetime
 
     class Config:

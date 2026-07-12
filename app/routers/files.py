@@ -35,6 +35,7 @@ def to_response(att: Attachment) -> AttachmentResponse:
         kind=att.kind or "upload",
         origin=att.origin,
         workflow_status=att.workflow_status,
+        approval_status=att.approval_status,
         created_at=att.created_at,
     )
 

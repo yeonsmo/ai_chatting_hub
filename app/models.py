@@ -105,6 +105,10 @@ class Attachment(Base):
     workflow_status = Column(String(20), nullable=True)   # None | held | submitted
     hr_ref = Column(String(120), nullable=True)           # 기안 시 HR이 부여한 문서 식별자
     expires_at = Column(DateTime, nullable=True, index=True)  # 보류 문서 자동삭제 예정 시각
+    # HR 결재 결과 + 사용자 팝업 알림용
+    approval_status = Column(String(20), nullable=True)   # pending | approved | rejected
+    approval_note = Column(String(300), nullable=True)    # 결재 코멘트/반려 사유(선택)
+    approval_seen = Column(Boolean, default=False, nullable=False)  # 결과 팝업을 사용자가 확인했는지
     created_at = Column(DateTime, default=datetime.utcnow)
 
     message = relationship("Message", back_populates="attachments", foreign_keys=[message_id])
