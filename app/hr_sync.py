@@ -187,6 +187,50 @@ async def submit_document(user, doc_type: str, title: str, file_bytes: bytes,
             "approval_status": _g(data, "approval_status", "status", default="pending")}
 
 
+def _norm_approval(s) -> str | None:
+    """HR 결재 상태 문자열을 pending/approved/rejected로 정규화."""
+    s = str(s or "").strip().lower()
+    if s in ("approved", "approve", "승인", "완료", "confirmed", "done", "accept", "accepted"):
+        return "approved"
+    if s in ("rejected", "reject", "반려", "거절", "denied", "declined", "return", "returned"):
+        return "rejected"
+    if s in ("pending", "submitted", "in_progress", "progress", "결재중", "진행중", "waiting", "review"):
+        return "pending"
+    return None
+
+
+async def fetch_document_status(hr_ref: str) -> dict | None:
+    """기안한 서류의 HR 결재 상태를 조회(폴링). hr_document_status_path 미설정이면 None.
+    반환: {"status": pending|approved|rejected, "note": ...} 또는 상태 해석불가 시 None."""
+    ref = str(hr_ref or "").strip()
+    tmpl = (settings.hr_document_status_path or "").strip()
+    base = (settings.hr_base_url or "").strip().rstrip("/")
+    if not ref or not tmpl or not base:
+        return None
+    path = tmpl.replace("{ref}", quote(ref, safe="")).replace("{id}", quote(ref, safe=""))
+    if "{" not in tmpl and "}" not in tmpl:      # 치환자 없으면 경로 끝에 붙임
+        path = tmpl.rstrip("/") + "/" + quote(ref, safe="")
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            r = await client.get(base + path, headers=_auth_headers())
+            if r.status_code == 404:
+                return None
+            r.raise_for_status()
+            data = r.json() if r.content else {}
+    except (httpx.HTTPError, ValueError):
+        return None
+    if isinstance(data, dict):
+        for wrap in ("document", "data", "result"):
+            if isinstance(data.get(wrap), dict):
+                data = data[wrap]
+                break
+    status = _norm_approval(_g(data, "approval_status", "status", "state"))
+    if not status:
+        return None
+    note = _g(data, "approval_note", "note", "comment", "reason", "코멘트", "사유")
+    return {"status": status, "note": (str(note)[:300] if note else None)}
+
+
 async def sync_employees(db: AsyncSession, updated_since: str | None = None,
                          auto_create: bool | None = None) -> dict:
     """HR 명부로 계정을 동기화하고 처리 결과 요약을 반환."""

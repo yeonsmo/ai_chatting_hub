@@ -1185,6 +1185,9 @@ async function initMain(){
   updateResponsive();
   newChat();
   await Promise.all([loadConvs(), loadProjects(), loadUsage()]);
+  // 결재 결과 팝업 알림: 로그인 직후 1회 + 이후 주기 확인
+  pollApprovals();
+  clearInterval(_apprTimer); _apprTimer=setInterval(pollApprovals, 60000);
 }
 
 async function loadUsage(){
@@ -1207,6 +1210,43 @@ async function loadUsage(){
       gauge.classList.remove('hidden');
     } else { gauge.classList.add('hidden'); }
   } catch(e){ /* 무시 */ }
+}
+
+/* ============ 결재 승인/반려 팝업 알림 ============ */
+let _apprTimer=null;
+async function pollApprovals(){
+  try{
+    const r=await api('GET','/documents/notifications');
+    const list=(r&&r.notifications)||[];
+    if(!list.length) return;
+    // 다른 모달이 열려 있으면 사용자 작업을 방해하지 않고 다음 주기에 표시
+    const gm=document.getElementById('genericModal');
+    if(gm && !gm.classList.contains('hidden')) return;
+    showApprovalPopup(list);
+  }catch(e){ /* 무시 */ }
+}
+function showApprovalPopup(list){
+  const ids=list.map(n=>n.id);
+  const items=list.map(n=>{
+    const ok=n.status==='approved';
+    const icon=ok?'✅':'❌';
+    const color=ok?'#34d399':'#f87171';
+    const label=ok?'승인되었습니다':'반려되었습니다';
+    const note=n.note?`<div style="margin-top:5px; font:400 11.5px/1.5 var(--font-sans); color:var(--fg-3);">사유: ${esc(n.note)}</div>`:'';
+    return `<div style="display:flex; gap:11px; padding:13px 14px; border:1px solid var(--rim-hair); border-radius:14px; margin-bottom:9px; background:${ok?'rgba(52,211,153,.06)':'rgba(248,113,113,.06)'};">
+      <div style="font-size:24px; line-height:1;">${icon}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="font:600 13px/1.4 var(--font-sans); color:var(--fg-1); word-break:break-all;">${esc(n.filename)}</div>
+        <div style="font:600 12px/1.5 var(--font-sans); color:${color}; margin-top:2px;">결재가 ${label}</div>
+        ${note}
+      </div></div>`;
+  }).join('');
+  openModal('📬 결재 결과 알림', items +
+    `<button class="sm-btn" style="width:100%; margin-top:6px; padding:10px; border-color:var(--accent); color:var(--accent); font-weight:600;" onclick="closeModal()">확인</button>`);
+  // 확인 처리(다시 안 뜨게) + 보관함이 열려 있으면 상태 갱신
+  api('POST','/documents/notifications/ack',{ids}).catch(()=>{});
+  const gb=document.getElementById('galleryModal');
+  if(gb && !gb.classList.contains('hidden') && typeof openGallery==='function') openGallery();
 }
 
 /* ============ 반응형 사이드바 ============ */
@@ -1822,8 +1862,13 @@ function _wfBtns(id, held){
 }
 function _wfHTML(a){
   if(!HR_DOC_ORIGINS.includes(a.origin)) return '';
-  if(a.workflow_status==='submitted')
-    return `<div id="wf-${a.id}" style="font:600 11.5px/1.4 var(--font-sans); color:#6ee7b7;">✅ 기안 완료 (HR 결재 진행중)</div>`;
+  if(a.workflow_status==='submitted'){
+    if(a.approval_status==='approved')
+      return `<div id="wf-${a.id}" style="font:600 11.5px/1.4 var(--font-sans); color:#34d399;">✅ 결재 승인 완료</div>`;
+    if(a.approval_status==='rejected')
+      return `<div id="wf-${a.id}" style="font:600 11.5px/1.4 var(--font-sans); color:#f87171;">❌ 결재 반려됨</div>`;
+    return `<div id="wf-${a.id}" style="font:600 11.5px/1.4 var(--font-sans); color:#6ee7b7;">📤 기안 완료 (HR 결재 진행중)</div>`;
+  }
   const held=a.workflow_status==='held';
   return `<div id="wf-${a.id}" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
     ${held?`<span style="font:500 10.5px/1.4 var(--font-sans); color:var(--warn);">⏸ 보류중 · 1일 후 자동삭제</span>`:''}

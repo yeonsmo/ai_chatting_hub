@@ -57,11 +57,25 @@ async def lifespan(app: FastAPI):
                 print(f"[CLEANUP][경고] 보류 서류 정리 실패: {e}")
             await asyncio.sleep(3600)   # 1시간마다
 
+    # 기안 서류의 HR 결재 상태 폴링(승인/반려 → 사용자 팝업 알림). 설정된 경우에만 동작.
+    async def _approval_poll_loop():
+        while True:
+            await asyncio.sleep(180)   # 3분마다
+            try:
+                async with AsyncSessionLocal() as db:
+                    n = await documents.poll_submitted_documents(db)
+                    if n:
+                        print(f"[HR] 결재 결과 {n}건 확인 → 사용자 알림 대기")
+            except Exception as e:  # noqa: BLE001
+                print(f"[HR][경고] 결재 상태 폴링 실패: {e}")
+
     purge_task = asyncio.create_task(_purge_loop())
+    poll_task = asyncio.create_task(_approval_poll_loop())
     try:
         yield
     finally:
         purge_task.cancel()
+        poll_task.cancel()
 
 
 app = FastAPI(title="Gabia AI 허브", lifespan=lifespan)
