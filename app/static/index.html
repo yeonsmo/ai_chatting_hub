@@ -1853,7 +1853,7 @@ function _dlCard(a, label){
     </div>`;
 }
 // HR 결재 대상 서류(생성 도구 origin)
-const HR_DOC_ORIGINS=['create_expense_report','create_overtime_request','create_leave_request','create_flexible_work_request','create_family_care_leave','create_early_leave'];
+const HR_DOC_ORIGINS=['create_expense_report','create_overtime_request','create_leave_request','create_flexible_work_request','create_family_care_leave','create_early_leave','create_ppe_receipt'];
 function _wfBtns(id, held){
   return `<button class="sm-btn" style="border-color:var(--accent); color:var(--accent); padding:6px 12px;" onclick="docSubmit(${id},this)">📤 기안</button>`+
     (held
