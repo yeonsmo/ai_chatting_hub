@@ -299,10 +299,14 @@ _ESTIMATE_SIMPLE_TEMPLATE = os.path.join(_FORM_DIR, "estimate_simple.pdf")
 _STATEMENT_TEMPLATE = os.path.join(_FORM_DIR, "transaction_statement.pdf")
 _OVERTIME_TEMPLATE = os.path.join(_FORM_DIR, "overtime_request.pdf")
 _EXPENSE_TEMPLATE = os.path.join(_FORM_DIR, "expense_report.pdf")
+_LEAVE_TEMPLATE = os.path.join(_FORM_DIR, "leave_request.pdf")
+_FLEX_TEMPLATE = os.path.join(_FORM_DIR, "flexible_work.pdf")
 
 # 콤보박스 허용값(원본 양식에 내장된 선택지 그대로). 앞뒤 공백까지 원본과 일치해야 채워진다.
 OT_DEPARTMENTS = [" 경영지원", "기술엔지니어링", "연구개발전담부서"]
 EXPENSE_PROOFS = ["간이영수증", "기타", "분실", "세금계산서", "영수증", "카드영수증", "현금영수증"]
+LEAVE_DEPARTMENTS = [" ", "연구개발전담부서", "경영지원", "기술엔지니어링"]
+LEAVE_TYPES = [" ", "연차", "반차", "반반차", "경조사", "병가", "공가", "특별휴가", "무급휴가"]
 
 _FORM_TEMPLATE_BYTES: dict = {}
 
@@ -350,6 +354,27 @@ def _acro_align(name: str) -> str:
     return "l"
 
 
+def _subset_pretendard(chars) -> bytes | None:
+    """주어진 문자들만 담아 Pretendard를 서브셋한 폰트 바이트를 반환(없거나 실패 시 None).
+    전체 폰트 임베딩은 수 MB라 그릴 글자만 골라 넣는다. PyMuPDF subset_fonts()는
+    양식 원본 CID 폰트를 손상시켜 쓰지 않는다."""
+    reg = os.path.join(_FONT_DIR, "Pretendard-Regular.ttf")
+    if not os.path.isfile(reg):
+        return None
+    try:
+        import io as _io
+        from fontTools import subset as _ftsubset
+        from fontTools.ttLib import TTFont as _TTFont
+        tt = _TTFont(reg)
+        ss = _ftsubset.Subsetter()
+        ss.populate(unicodes=sorted({ord(c) for c in chars}))
+        ss.subset(tt)
+        _b = _io.BytesIO(); tt.save(_b)
+        return _b.getvalue()
+    except Exception:  # noqa: BLE001 — 서브셋 실패 시 폴백은 호출측에서
+        return None
+
+
 def _fill_acroform(template_path: str, values: dict, overlays=None) -> bytes:
     """AcroForm 필드를 이름 기준으로 채워 PDF 바이트 반환.
 
@@ -365,30 +390,14 @@ def _fill_acroform(template_path: str, values: dict, overlays=None) -> bytes:
     reg = os.path.join(_FONT_DIR, "Pretendard-Regular.ttf")
     has_font = os.path.isfile(reg)
 
-    # 그릴 문자만 모아 Pretendard를 서브셋 → 임베딩(전체 폰트 임베딩 시 수 MB로 커짐).
-    # PyMuPDF subset_fonts()는 양식 원본 CID 폰트를 손상시켜 쓰지 않는다.
-    def _collect_chars() -> set:
-        chars = set("0123456789.,-/():%원₩ ")
-        for v in values.values():
-            if isinstance(v, str):
-                chars.update(v)
-        for ov in (overlays or []):
-            chars.update(str(ov.get("text") or ""))
-        return chars
-
-    fontbuffer = None
-    if has_font:
-        try:
-            import io as _io
-            from fontTools import subset as _ftsubset
-            from fontTools.ttLib import TTFont as _TTFont
-            tt = _TTFont(reg)
-            ss = _ftsubset.Subsetter()
-            ss.populate(unicodes=sorted({ord(c) for c in _collect_chars()}))
-            ss.subset(tt)
-            _b = _io.BytesIO(); tt.save(_b); fontbuffer = _b.getvalue()
-        except Exception:  # noqa: BLE001 — 서브셋 실패 시 전체 폰트로 폴백
-            fontbuffer = None
+    # 그릴 문자만 모아 Pretendard를 서브셋 → 임베딩.
+    chars = set("0123456789.,-/():%원₩ ")
+    for v in values.values():
+        if isinstance(v, str):
+            chars.update(v)
+    for ov in (overlays or []):
+        chars.update(str(ov.get("text") or ""))
+    fontbuffer = _subset_pretendard(chars) if has_font else None
 
     if fontbuffer:
         measure = fitz.Font(fontbuffer=fontbuffer)
@@ -669,6 +678,112 @@ def render_expense_report_pdf(data: dict) -> bytes:
     if total > 0:  # 합계 칸엔 폼 필드가 없어 숫자를 우측정렬로 그린다("원(부가세 포함)" 앞)
         overlays.append({"page": 0, "text": _won(total), "right": 424, "y": 521, "size": 10})
     return _fill_acroform(_EXPENSE_TEMPLATE, vals, overlays)
+
+
+def render_leave_request_pdf(data: dict) -> bytes:
+    """HP 휴가신청서 AcroForm을 채워 PDF 생성. 부서/휴가종류 콤보, 오전·오후 반차 체크박스.
+    발생/사용/잔여 연차를 주면 소진율(사용/발생)은 비어 있을 때 자동계산한다."""
+    g = data.get
+    # 소진율 자동계산(명시값 없을 때). 발생 연차 대비 사용 연차 백분율.
+    rate = g("usage_rate")
+    if not rate:
+        grant, used = _num(g("granted_days")), _num(g("used_days"))
+        if grant and used is not None:
+            rate = f"{round(used / grant * 100)}%"
+    vals = {
+        "신청일자": g("apply_date"), "신청자": g("applicant"), "입사일": g("hire_date"),
+        "부서": _combo_match(g("dept"), LEAVE_DEPARTMENTS), "직위": g("position"), "사번": g("emp_no"),
+        "휴가 종류": _combo_match(g("leave_type"), LEAVE_TYPES),
+        "시간 기간": g("start"), "종료시간": g("end"), "휴가 일수": g("days"),
+        "발생 연차": g("granted_days"), "사용 연차": g("used_days"),
+        "잔여연차": g("remaining_days"), "소진율": rate,
+        "휴가 사유": g("reason"), "연락처": g("contact"),
+        "업무대리자": g("deputy"), "인수인계 사항": g("handover"),
+        "이름": g("applicant"),   # 하단 작성자 이름
+    }
+    # 오전/오후 반차 체크박스(반차·반반차 선택 시 사용)
+    half = str(g("half_day") or "")
+    if "오전" in half:
+        vals["Check Box6"] = True
+    if "오후" in half:
+        vals["Check Box7"] = True
+    return _fill_acroform(_LEAVE_TEMPLATE, vals)
+
+
+def render_flexible_work_pdf(data: dict) -> bytes:
+    """HP 유연근무 신청서 생성. 이 양식은 입력 필드가 없는 '평면' PDF라 표 셀 좌표에
+    Pretendard로 값을 직접 그린다(줄바꿈은 셀 안에서 자동 줄맞춤). 원본 레이아웃은 보존."""
+    import fitz  # PyMuPDF (지연 임포트)
+
+    g = data.get
+    # (rect, text, size, align, 세로중앙여부) — 좌표는 원본 표 격자에서 추출(612x792, pt)
+    def R(x0, y0, x1, y1):
+        return fitz.Rect(x0, y0, x1, y1)
+    cells = [
+        (R(230, 126, 331, 150), g("name"), 10, "center", True),
+        (R(444, 126, 591, 150), g("dept"), 10, "center", True),
+        (R(230, 152, 331, 177), g("position"), 10, "center", True),
+        (R(444, 152, 591, 177), g("emp_no"), 10, "center", True),
+        (R(126, 179, 588, 204), g("apply_date"), 10, "left", True),
+        (R(126, 208, 588, 360), g("reason"), 10, "left", False),
+        (R(126, 369, 588, 735), g("work_plan"), 10, "left", False),
+        (R(126, 741, 588, 754), g("remarks"), 8, "left", True),
+        (R(112, 106, 360, 122), g("mgmt_no"), 9, "left", True),
+        (R(404, 106, 588, 122), g("approval_no"), 9, "left", True),
+    ]
+    chars = set(" 0123456789.,-/():%")
+    for _r, t, _s, _a, _c in cells:
+        if t:
+            chars.update(str(t))
+    fontbuffer = _subset_pretendard(chars)
+    reg = os.path.join(_FONT_DIR, "Pretendard-Regular.ttf")
+    has_font = os.path.isfile(reg)
+    align_map = {"left": 0, "center": 1, "right": 2}
+
+    doc = fitz.open(stream=_form_template_bytes(_FLEX_TEMPLATE), filetype="pdf")
+    try:
+        page = doc[0]
+        if has_font:
+            if fontbuffer:
+                page.insert_font(fontname="pret", fontbuffer=fontbuffer)
+            else:
+                page.insert_font(fontname="pret", fontfile=reg)
+        fontname = "pret" if has_font else "helv"
+        for rect, text, size, align, vcenter in cells:
+            text = str(text or "")
+            if not text:
+                continue
+            single = "\n" not in text and len(text) < 40
+            if vcenter and single:
+                # 한 줄 값은 셀 세로 중앙에 직접 그린다(작은 칸에서 상단 쏠림 방지)
+                mfont = fitz.Font(fontbuffer=fontbuffer) if fontbuffer else (
+                    fitz.Font(fontfile=reg) if has_font else fitz.Font("helv"))
+                sz = size
+                tw = mfont.text_length(text, sz)
+                avail = rect.width - 6
+                if tw > avail and tw > 0:
+                    sz = max(6.0, sz * avail / tw); tw = mfont.text_length(text, sz)
+                if align == "center":
+                    x = rect.x0 + (rect.width - tw) / 2
+                elif align == "right":
+                    x = rect.x1 - tw - 3
+                else:
+                    x = rect.x0 + 3
+                y = rect.y0 + (rect.height + sz * 0.70) / 2
+                page.insert_text((x, y), text, fontsize=sz, fontname=fontname, color=_FILL_RGB)
+            else:
+                # 여러 줄/긴 값은 셀 안에서 자동 줄바꿈(넘치면 폰트 축소 재시도)
+                sz = size
+                while sz >= 6.0:
+                    rc = page.insert_textbox(rect, text, fontsize=sz, fontname=fontname,
+                                             color=_FILL_RGB, align=align_map.get(align, 0))
+                    if rc >= 0:
+                        break
+                    sz -= 0.5
+        out = doc.tobytes(garbage=4, deflate=True)
+    finally:
+        doc.close()
+    return out
 
 
 # ---------------- XLSX ----------------

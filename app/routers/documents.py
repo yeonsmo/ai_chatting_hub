@@ -1,6 +1,6 @@
 """생성 서류 결재 워크플로우 — 기안(HR 전송)/보류(1일 후 자동삭제).
 
-- 대상: 허브에서 생성된 HR/결재 서류(지출결의서·연장근로신청서).
+- 대상: 허브에서 생성된 HR/결재 서류(지출결의서·연장근로신청서·휴가신청서·유연근무신청서).
 - 기안: 본인 사번을 실어 HR 결재로 전송 → HR이 승인 워크플로우 진행.
 - 보류: 보관함에 유지하되 24시간 뒤 자동 삭제(기안 안 하면).
 """
@@ -26,6 +26,8 @@ HOLD_TTL = timedelta(days=1)
 HR_DOC_TYPES = {
     "create_expense_report": "expense_report",
     "create_overtime_request": "overtime_request",
+    "create_leave_request": "leave_request",
+    "create_flexible_work_request": "flexible_work_request",
 }
 
 
