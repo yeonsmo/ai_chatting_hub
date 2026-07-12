@@ -246,13 +246,81 @@ CREATE_EXPENSE_REPORT = {
     },
 }
 
+CREATE_LEAVE_REQUEST = {
+    "name": "create_leave_request",
+    "description": (
+        "HP엔지니어링 표준 '휴가신청서'(회사 양식) PDF를 생성한다. 직원이 연차/반차/경조사 등 휴가 신청서를 "
+        "요청하면 대화하며 정보를 정리한 뒤 이 도구를 호출한다. 휴가종류·부서는 정해진 목록에서만 선택. "
+        "반차면 half_day로 오전/오후를 지정. 발생/사용 연차를 주면 소진율은 자동계산되니 직접 넣지 말 것. "
+        "아는 값만 채우고 없는 값은 비운다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "apply_date": {"type": "string", "description": "신청일자(예: 2026-07-12)"},
+            "applicant": {"type": "string", "description": "신청자 성명"},
+            "hire_date": {"type": "string", "description": "입사일"},
+            "dept": {"type": "string", "enum": ["경영지원", "기술엔지니어링", "연구개발전담부서"],
+                     "description": "부서"},
+            "position": {"type": "string", "description": "직위"},
+            "emp_no": {"type": "string", "description": "사번"},
+            "leave_type": {"type": "string",
+                           "enum": ["연차", "반차", "반반차", "경조사", "병가", "공가", "특별휴가", "무급휴가"],
+                           "description": "휴가 종류"},
+            "half_day": {"type": "string", "enum": ["오전", "오후"],
+                         "description": "반차/반반차일 때 오전 또는 오후"},
+            "start": {"type": "string", "description": "휴가 시작일(또는 시작시간)"},
+            "end": {"type": "string", "description": "휴가 종료일(또는 종료시간)"},
+            "days": {"type": "string", "description": "휴가 일수(예: 1, 0.5)"},
+            "granted_days": {"type": "string", "description": "발생 연차(일)"},
+            "used_days": {"type": "string", "description": "사용 연차(일)"},
+            "remaining_days": {"type": "string", "description": "잔여 연차(일)"},
+            "usage_rate": {"type": "string", "description": "소진율(비우면 사용/발생으로 자동계산)"},
+            "reason": {"type": "string", "description": "휴가 사유"},
+            "contact": {"type": "string", "description": "비상 연락처"},
+            "deputy": {"type": "string", "description": "업무 대리자"},
+            "handover": {"type": "string", "description": "인수인계 사항"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["applicant", "leave_type", "start", "reason"],
+    },
+}
+
+CREATE_FLEXIBLE_WORK = {
+    "name": "create_flexible_work_request",
+    "description": (
+        "HP엔지니어링 표준 '유연근무 신청서'(회사 양식) PDF를 생성한다. 직원이 시차출퇴근/재택/선택근무 등 "
+        "유연근무 신청서를 요청하면 대화하며 정보를 정리한 뒤 이 도구를 호출한다. 근무계획에는 출퇴근 시간·"
+        "코어타임 등 구체적 계획을 적는다. 아는 값만 채우고 없는 값은 비운다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "apply_date": {"type": "string", "description": "신청일자(예: 2026-07-12)"},
+            "name": {"type": "string", "description": "신청자 성명"},
+            "dept": {"type": "string", "description": "부서"},
+            "position": {"type": "string", "description": "직급"},
+            "emp_no": {"type": "string", "description": "사번"},
+            "reason": {"type": "string", "description": "신청 사유"},
+            "work_plan": {"type": "string", "description": "근무 계획(출퇴근 시간·코어타임 등, 여러 줄 가능)"},
+            "remarks": {"type": "string", "description": "비고"},
+            "mgmt_no": {"type": "string", "description": "문서 관리번호(있을 때만)"},
+            "approval_no": {"type": "string", "description": "승인번호(있을 때만)"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["name", "reason", "work_plan"],
+    },
+}
+
 TOOLS = {CREATE_DOCUMENT["name"]: CREATE_DOCUMENT,
          CREATE_SPREADSHEET["name"]: CREATE_SPREADSHEET,
          CREATE_MEETING_MINUTES["name"]: CREATE_MEETING_MINUTES,
          CREATE_ESTIMATE["name"]: CREATE_ESTIMATE,
          CREATE_TRANSACTION_STATEMENT["name"]: CREATE_TRANSACTION_STATEMENT,
          CREATE_OVERTIME_REQUEST["name"]: CREATE_OVERTIME_REQUEST,
-         CREATE_EXPENSE_REPORT["name"]: CREATE_EXPENSE_REPORT}
+         CREATE_EXPENSE_REPORT["name"]: CREATE_EXPENSE_REPORT,
+         CREATE_LEAVE_REQUEST["name"]: CREATE_LEAVE_REQUEST,
+         CREATE_FLEXIBLE_WORK["name"]: CREATE_FLEXIBLE_WORK}
 
 # 실행이 async/DB가 필요해 run_tool로 처리하지 않고 chat.py에서 직접 실행하는 도구.
 # 스키마(정의)만 여기서 노출한다.
@@ -327,5 +395,13 @@ def run_tool(name: str, params: dict):
         data = doc_gen.render_expense_report_pdf(params or {})
         fn = safe_filename(params.get("filename") or params.get("title")
                            or params.get("writer_name"), "지출결의서", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_leave_request":
+        data = doc_gen.render_leave_request_pdf(params or {})
+        fn = safe_filename(params.get("filename") or params.get("applicant"), "휴가신청서", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_flexible_work_request":
+        data = doc_gen.render_flexible_work_pdf(params or {})
+        fn = safe_filename(params.get("filename") or params.get("name"), "유연근무신청서", "pdf")
         return data, doc_gen.PDF_CT, "pdf", fn
     raise ValueError(f"알 수 없는 생성 도구: {name}")
