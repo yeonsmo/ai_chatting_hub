@@ -301,6 +301,10 @@ _OVERTIME_TEMPLATE = os.path.join(_FORM_DIR, "overtime_request.pdf")
 _EXPENSE_TEMPLATE = os.path.join(_FORM_DIR, "expense_report.pdf")
 _LEAVE_TEMPLATE = os.path.join(_FORM_DIR, "leave_request.pdf")
 _FLEX_TEMPLATE = os.path.join(_FORM_DIR, "flexible_work.pdf")
+_FAMILY_CARE_TEMPLATE = os.path.join(_FORM_DIR, "family_care_leave.pdf")
+_EARLY_LEAVE_TEMPLATE = os.path.join(_FORM_DIR, "early_leave.pdf")
+_PPE_REGULAR_TEMPLATE = os.path.join(_FORM_DIR, "ppe_receipt_regular.pdf")
+_PPE_DAILY_TEMPLATE = os.path.join(_FORM_DIR, "ppe_receipt_daily.pdf")
 
 # 콤보박스 허용값(원본 양식에 내장된 선택지 그대로). 앞뒤 공백까지 원본과 일치해야 채워진다.
 OT_DEPARTMENTS = [" 경영지원", "기술엔지니어링", "연구개발전담부서"]
@@ -708,6 +712,62 @@ def render_leave_request_pdf(data: dict) -> bytes:
     if "오후" in half:
         vals["Check Box7"] = True
     return _fill_acroform(_LEAVE_TEMPLATE, vals)
+
+
+def render_family_care_leave_pdf(data: dict) -> bytes:
+    """HP 가족돌봄휴가 신청서 AcroForm을 채워 PDF 생성. 인수인계 리스트는 최대 11줄."""
+    g = data.get
+    vals = {
+        "기안일자": g("draft_date"),
+        "신청자 성명": g("applicant"), "신청자 부서": g("dept"),
+        "신청자 직급": g("position"), "신청자 사번": g("emp_no"),
+        "신청사유": g("reason"),
+    }
+    for i, item in enumerate((g("handover") or [])[:11], 1):
+        vals[str(i)] = item
+    return _fill_acroform(_FAMILY_CARE_TEMPLATE, vals)
+
+
+def render_early_leave_pdf(data: dict) -> bytes:
+    """HP 조퇴 신청서 AcroForm을 채워 PDF 생성."""
+    g = data.get
+    vals = {
+        "작성기안상신일": g("draft_date"),
+        "신청자 성명": g("applicant"), "신청자 부서명": g("dept"),
+        "직급": g("position"), "사번": g("emp_no"),
+        "신청일자 조퇴예정시간(조퇴 시간)": g("early_time"),
+        "조퇴 신청서 신청사유": g("reason"),
+        "인수인계 사항": g("handover"),
+    }
+    return _fill_acroform(_EARLY_LEAVE_TEMPLATE, vals)
+
+
+def render_ppe_receipt_pdf(data: dict) -> bytes:
+    """HP 개인 보호구 지급 확인서 AcroForm을 채워 PDF 생성.
+    worker_type='일용'이면 일용직 양식(주민등록번호), 그 외 상용직(사번/직급). 품목 최대 13행."""
+    g = data.get
+    daily = "일용" in str(g("worker_type") or "")
+    template = _PPE_DAILY_TEMPLATE if daily else _PPE_REGULAR_TEMPLATE
+    vals = {
+        "반출자 서명일자": g("sign_date"), "반출자 기안일자": g("draft_date"),
+        "수령인 성명": g("receiver_name"),
+        "지급자 성명": g("issuer_name"), "거주지 주소": g("address"),
+        "지급자 부서": g("issuer_dept"), "직급": g("position"), "전화번호": g("phone"),
+    }
+    # 상용직=사번/직급, 일용직=주민등록번호
+    if daily:
+        vals["주민등록번호"] = g("resident_no")
+    else:
+        vals["사번/직급"] = g("emp_rank")
+    for i, it in enumerate((g("items") or [])[:13]):
+        if not isinstance(it, dict):
+            it = {"name": str(it)}
+        vals[f"품목명.{i}"] = it.get("name")
+        vals[f"규격.{i}"] = it.get("spec")
+        vals[f"단위.{i}"] = it.get("unit")
+        vals[f"수량.{i}"] = it.get("qty")
+        vals[f"비고.{i}"] = it.get("note")
+    return _fill_acroform(template, vals)
 
 
 def render_flexible_work_pdf(data: dict) -> bytes:

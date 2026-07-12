@@ -312,6 +312,117 @@ CREATE_FLEXIBLE_WORK = {
     },
 }
 
+CREATE_FAMILY_CARE_LEAVE = {
+    "name": "create_family_care_leave",
+    "description": (
+        "HP엔지니어링 표준 '가족돌봄휴가 신청서'(회사 양식) PDF를 생성한다. 직원이 가족돌봄휴가를 "
+        "요청하면 대화하며 정보를 정리한 뒤 이 도구를 호출한다. 인수인계 리스트(handover)는 한 줄에 "
+        "한 항목씩 최대 11개. 아는 값만 채운다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "draft_date": {"type": "string", "description": "기안일자(예: 2026-07-12)"},
+            "applicant": {"type": "string", "description": "신청자 성명"},
+            "dept": {"type": "string", "description": "신청자 부서"},
+            "position": {"type": "string", "description": "신청자 직급"},
+            "emp_no": {"type": "string", "description": "신청자 사번"},
+            "reason": {"type": "string", "description": "신청 사유"},
+            "handover": {"type": "array", "items": {"type": "string"},
+                         "description": "인수인계 리스트(최대 11줄, 한 줄에 한 항목)"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["applicant", "reason"],
+    },
+}
+
+CREATE_EARLY_LEAVE = {
+    "name": "create_early_leave",
+    "description": (
+        "HP엔지니어링 표준 '조퇴 신청서'(회사 양식) PDF를 생성한다. 직원이 조퇴 신청서를 요청하면 "
+        "대화하며 정보를 정리한 뒤 이 도구를 호출한다. 아는 값만 채운다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "draft_date": {"type": "string", "description": "작성/기안 상신일"},
+            "applicant": {"type": "string", "description": "신청자 성명"},
+            "dept": {"type": "string", "description": "신청자 부서명"},
+            "position": {"type": "string", "description": "직급"},
+            "emp_no": {"type": "string", "description": "사번"},
+            "early_time": {"type": "string", "description": "조퇴 예정시간(조퇴 시간)"},
+            "reason": {"type": "string", "description": "조퇴 사유"},
+            "handover": {"type": "string", "description": "인수인계 사항"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["applicant", "early_time", "reason"],
+    },
+}
+
+_PPE_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string", "description": "품목명"},
+        "spec": {"type": "string", "description": "규격"},
+        "unit": {"type": "string", "description": "단위"},
+        "qty": {"type": "string", "description": "수량"},
+        "note": {"type": "string", "description": "비고"},
+    },
+    "required": ["name"],
+}
+
+CREATE_PPE_RECEIPT = {
+    "name": "create_ppe_receipt",
+    "description": (
+        "HP엔지니어링 표준 '개인 보호구 지급 확인서(상용직)' PDF를 생성한다. 상용직 직원에게 안전 보호구를 "
+        "지급할 때 대화하며 수령인·지급 품목을 정리한 뒤 이 도구를 호출한다. 품목은 최대 13행. "
+        "※ 일용직은 이 도구가 아니라 create_ppe_receipt_daily를 사용한다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "receiver_name": {"type": "string", "description": "수령인 성명"},
+            "emp_rank": {"type": "string", "description": "사번/직급"},
+            "issuer_name": {"type": "string", "description": "지급자 성명"},
+            "issuer_dept": {"type": "string", "description": "지급자 부서"},
+            "position": {"type": "string", "description": "직급"},
+            "address": {"type": "string", "description": "거주지 주소"},
+            "phone": {"type": "string", "description": "전화번호"},
+            "sign_date": {"type": "string", "description": "반출자 서명일자"},
+            "draft_date": {"type": "string", "description": "기안일자"},
+            "items": {"type": "array", "items": _PPE_ITEM_SCHEMA, "description": "지급 품목(최대 13개)"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["receiver_name", "items"],
+    },
+}
+
+CREATE_PPE_RECEIPT_DAILY = {
+    "name": "create_ppe_receipt_daily",
+    "description": (
+        "HP엔지니어링 표준 '개인 보호구 지급 확인서(일용직)' PDF를 생성한다. 일용직 근로자에게 보호구를 "
+        "지급할 때 사용하며, 상용직과 달리 사번 대신 주민등록번호를 기재한다. 품목은 최대 13행. "
+        "이 서류는 별도 일용직 HR 관리모듈로 처리되므로 허브 결재(기안)에는 올리지 않고 생성/다운로드만 한다."
+    ),
+    "params": {
+        "type": "object",
+        "properties": {
+            "receiver_name": {"type": "string", "description": "수령인 성명"},
+            "resident_no": {"type": "string", "description": "주민등록번호"},
+            "issuer_name": {"type": "string", "description": "지급자 성명"},
+            "issuer_dept": {"type": "string", "description": "지급자 부서"},
+            "position": {"type": "string", "description": "직급"},
+            "address": {"type": "string", "description": "거주지 주소"},
+            "phone": {"type": "string", "description": "전화번호"},
+            "sign_date": {"type": "string", "description": "반출자 서명일자"},
+            "draft_date": {"type": "string", "description": "기안일자"},
+            "items": {"type": "array", "items": _PPE_ITEM_SCHEMA, "description": "지급 품목(최대 13개)"},
+            "filename": {"type": "string", "description": "확장자 없는 파일 이름"},
+        },
+        "required": ["receiver_name", "items"],
+    },
+}
+
 TOOLS = {CREATE_DOCUMENT["name"]: CREATE_DOCUMENT,
          CREATE_SPREADSHEET["name"]: CREATE_SPREADSHEET,
          CREATE_MEETING_MINUTES["name"]: CREATE_MEETING_MINUTES,
@@ -320,7 +431,11 @@ TOOLS = {CREATE_DOCUMENT["name"]: CREATE_DOCUMENT,
          CREATE_OVERTIME_REQUEST["name"]: CREATE_OVERTIME_REQUEST,
          CREATE_EXPENSE_REPORT["name"]: CREATE_EXPENSE_REPORT,
          CREATE_LEAVE_REQUEST["name"]: CREATE_LEAVE_REQUEST,
-         CREATE_FLEXIBLE_WORK["name"]: CREATE_FLEXIBLE_WORK}
+         CREATE_FLEXIBLE_WORK["name"]: CREATE_FLEXIBLE_WORK,
+         CREATE_FAMILY_CARE_LEAVE["name"]: CREATE_FAMILY_CARE_LEAVE,
+         CREATE_EARLY_LEAVE["name"]: CREATE_EARLY_LEAVE,
+         CREATE_PPE_RECEIPT["name"]: CREATE_PPE_RECEIPT,
+         CREATE_PPE_RECEIPT_DAILY["name"]: CREATE_PPE_RECEIPT_DAILY}
 
 # 실행이 async/DB가 필요해 run_tool로 처리하지 않고 chat.py에서 직접 실행하는 도구.
 # 스키마(정의)만 여기서 노출한다.
@@ -403,5 +518,23 @@ def run_tool(name: str, params: dict):
     if name == "create_flexible_work_request":
         data = doc_gen.render_flexible_work_pdf(params or {})
         fn = safe_filename(params.get("filename") or params.get("name"), "유연근무신청서", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_family_care_leave":
+        data = doc_gen.render_family_care_leave_pdf(params or {})
+        fn = safe_filename(params.get("filename") or params.get("applicant"), "가족돌봄휴가신청서", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_early_leave":
+        data = doc_gen.render_early_leave_pdf(params or {})
+        fn = safe_filename(params.get("filename") or params.get("applicant"), "조퇴신청서", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_ppe_receipt":
+        data = doc_gen.render_ppe_receipt_pdf(params or {})
+        fn = safe_filename(params.get("filename") or params.get("receiver_name"),
+                           "개인보호구지급확인서", "pdf")
+        return data, doc_gen.PDF_CT, "pdf", fn
+    if name == "create_ppe_receipt_daily":
+        data = doc_gen.render_ppe_receipt_pdf({**(params or {}), "worker_type": "일용"})
+        fn = safe_filename(params.get("filename") or params.get("receiver_name"),
+                           "개인보호구지급확인서_일용", "pdf")
         return data, doc_gen.PDF_CT, "pdf", fn
     raise ValueError(f"알 수 없는 생성 도구: {name}")
