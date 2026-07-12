@@ -32,7 +32,8 @@ HR_DOC_TYPES = {
     "create_flexible_work_request": "flexible_work_request",
     "create_family_care_leave": "family_care_leave",
     "create_early_leave": "early_leave",
-    # 개인보호구 지급확인서(상용/일용)는 허브 결재 대상 아님(일용은 별도 일용직 HR 모듈로 처리).
+    "create_ppe_receipt": "ppe_receipt",   # 상용직만 허브 결재(기안) 대상
+    # 일용직 보호구(create_ppe_receipt_daily)는 별도 일용직 HR 관리모듈로 처리 → 여기 없음(생성만).
 }
 
 
