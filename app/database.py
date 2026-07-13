@@ -55,9 +55,10 @@ MIGRATION_STATEMENTS = [
 
 # 기본 모델 라우팅 시드: (key, label, provider, provider_model_id, description, sort)
 DEFAULT_MODEL_ROUTES = [
-    ("sonnet",      "Claude Sonnet 4.6", "anthropic", "claude-sonnet-4-6",          "균형잡힌 성능 · 추천", 10),
-    ("opus",        "Claude Opus 4.6",   "anthropic", "claude-opus-4-6",            "최고 성능", 11),
-    ("haiku",       "Claude Haiku 4.5",  "anthropic", "claude-haiku-4-5-20251001",  "빠름 · 저렴", 12),
+    # 가비아 AI Hub 경유(클로드도 /v1/chat/completions로 호출). 모델 ID는 가비아 표기(점).
+    ("sonnet",      "Claude Sonnet 4.6", "gabia", "claude-sonnet-4.6",          "균형잡힌 성능 · 추천", 10),
+    ("opus",        "Claude Opus 4.6",   "gabia", "claude-opus-4.6",            "최고 성능", 11),
+    ("haiku",       "Claude Haiku 4.5",  "gabia", "claude-haiku-4.5",           "빠름 · 저렴", 12),
     ("gpt-5-pro",   "GPT-5 Pro",         "gabia",     "gpt-5.4-pro",                "OpenAI 최고 성능", 20),
     ("gpt-5",       "GPT-5",             "gabia",     "gpt-5.2",                    "OpenAI 균형", 21),
     ("o4-mini",     "o4-mini",           "gabia",     "o4-mini",                    "빠른 추론", 22),
