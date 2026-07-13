@@ -3,12 +3,13 @@ import json
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
 from app.dependencies import get_admin_user
 from app.models import User, ModelRoute, Integration, Skill
-from app.providers import PROVIDERS
+from app.providers import PROVIDERS, run_chat, run_image, friendly_api_error
 from app.roles import ROLE_LEVELS, ROLE_LABELS_KO
 from app.skills_runtime import parse_params_schema, _validate_public_host
 from app.schemas import (
@@ -149,6 +150,53 @@ async def delete_model_route(
     await db.delete(route)
     await db.commit()
     return {"message": "삭제되었습니다"}
+
+
+class RouteTestBody(BaseModel):
+    # 저장 전 값으로 바로 테스트할 수 있게 프로바이더/모델ID를 덮어쓸 수 있음(비우면 저장된 값)
+    provider: str | None = None
+    provider_model_id: str | None = None
+    kind: str | None = None
+
+
+@router.post("/model-routes/{route_id}/test")
+async def test_model_route(
+    route_id: int,
+    body: RouteTestBody,
+    _: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """이 모델 라우팅이 실제로 호출되는지 작은 요청으로 확인. 성공/실패와 프로바이더 원문
+    오류를 그대로 돌려줘서, 키·모델ID·권한 문제를 관리자 화면에서 바로 진단하게 한다."""
+    route = (await db.execute(select(ModelRoute).where(ModelRoute.id == route_id))).scalar_one_or_none()
+    if not route:
+        raise HTTPException(status_code=404, detail="라우팅을 찾을 수 없습니다")
+    provider = (body.provider or route.provider or "").strip()
+    model_id = (body.provider_model_id or route.provider_model_id or "").strip()
+    kind = (body.kind or route.kind or "chat").strip()
+    if not provider or not model_id:
+        return {"ok": False, "message": "프로바이더와 모델 ID를 먼저 입력하세요."}
+    import time as _t
+    started = _t.monotonic()
+    try:
+        if kind == "image":
+            imgs = await run_image(db, provider, model_id, "test", size="512x512")
+            ok = bool(imgs)
+            note = f"이미지 {len(imgs)}장 생성됨" if ok else "이미지가 반환되지 않음"
+        else:
+            messages = [{"role": "user", "content": "연결 테스트입니다. '연결됨'이라고만 답하세요."}]
+            outcome = await run_chat(db, provider, model_id, None, messages, None)
+            ok = True
+            reply = (getattr(outcome, "content", "") or "").strip().replace("\n", " ")
+            note = f"응답: {reply[:40]}" if reply else "응답 수신"
+        ms = int((_t.monotonic() - started) * 1000)
+        return {"ok": ok, "message": f"연결 성공 · {note} ({ms}ms)",
+                "provider": provider, "model_id": model_id}
+    except HTTPException as e:
+        # 키 미등록·프로바이더 미지원 등(resolve_credentials 등에서 발생)
+        return {"ok": False, "message": str(e.detail), "provider": provider, "model_id": model_id}
+    except Exception as e:  # noqa: BLE001 — 프로바이더 원문 오류를 그대로 노출(진단용)
+        return {"ok": False, "message": friendly_api_error(e), "provider": provider, "model_id": model_id}
 
 
 # ================= 연동 =================

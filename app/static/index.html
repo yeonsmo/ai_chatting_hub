@@ -2914,13 +2914,28 @@ async function loadRoutesTab(){
       <div style="font:600 13px/1 var(--font-sans); color:var(--fg-1);">모델 라우팅 (${routes.length})</div>
       <button class="primary-btn" style="padding:8px 14px; font-size:12px; border-radius:10px;" onclick="document.getElementById('routeFormBox').classList.toggle('hidden')">+ 모델 추가</button>
     </div>
-    <div style="font:400 10.5px/1.6 var(--font-sans); color:var(--fg-3); margin-bottom:12px;">각 모델 키가 <b>어느 프로바이더의 어떤 모델</b>을 호출할지 지정합니다. 최소 역할을 올리면 하위 권한 직원에게는 모델이 보이지 않습니다.</div>
+    <div style="font:400 10.5px/1.7 var(--font-sans); color:var(--fg-3); margin-bottom:10px;">
+      각 모델 키가 <b>어느 프로바이더의 어떤 모델</b>을 호출할지 지정합니다. 수정 후 <b style="color:var(--accent);">저장</b>, 실제로 되는지 <b style="color:#93c5fd;">🔌 테스트</b>로 확인하세요.
+    </div>
+    <details style="margin-bottom:12px; border:1px solid var(--rim-hair); border-radius:10px; background:var(--fill-1);">
+      <summary style="cursor:pointer; padding:9px 13px; font:600 11px/1 var(--font-sans); color:var(--accent); list-style:none;">📖 각 칸에 뭘 넣나요?</summary>
+      <div style="padding:2px 15px 13px; font:400 11px/1.85 var(--font-sans); color:var(--fg-2);">
+        · <b>모델 키</b> — 앱 내부에서 쓰는 별칭(예: sonnet). <span style="color:var(--fg-3);">바꾸지 마세요.</span><br>
+        · <b>표시 이름</b> — 사용자 화면에 보이는 이름(예: Claude Sonnet 4.6).<br>
+        · <b>프로바이더</b> — 어디로 호출할지. 회사는 대부분 <b>가비아 AI Hub</b>(한 키로 GPT·클로드·제미나이 전부).<br>
+        · <b>모델 ID</b> — 그 프로바이더가 아는 <u>실제 모델명</u>. <b style="color:#fcd34d;">가비아는 점(.) 표기</b> — 예: <span style="font-family:monospace;">claude-sonnet-4.6 · claude-opus-4.6 · claude-haiku-4.5 · gpt-5.2 · gemini-3.1-flash-lite</span>. 헷갈리면 <span style="font-family:monospace;">claude-sonnet-latest</span> 처럼 -latest 사용.<br>
+        · <b>용도</b> — 대화(텍스트) 또는 이미지 생성.<br>
+        · <b>최소 역할</b> — 이 등급 이상만 이 모델을 볼 수 있음.<br>
+        · <b>🔌 테스트</b> — 지금 입력한 값으로 실제 호출해보고 성공/실패와 오류 원인을 보여줍니다(저장 안 해도 됨).<br>
+        <span style="color:#fcd34d;">⚠ 가비아에서 401 "권한 없음/only access" 오류가 나면</span>, 가비아 클라우드 콘솔에서 그 API 키 프로젝트에 해당 모델 <b>접근 권한</b>을 켜야 합니다(앱 문제 아님).
+      </div>
+    </details>
     <div id="routeFormBox" class="hidden row-card" style="margin-bottom:14px; padding:15px;">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
         <input id="rKey" class="field" placeholder="모델 키 (예: gpt4-azure)">
         <input id="rLabel" class="field" placeholder="표시 이름 (예: GPT-4o Azure)">
         <select id="rProvider" class="field">${provOpts('anthropic')}</select>
-        <input id="rModelId" class="field" placeholder="프로바이더 모델 ID / Azure deployment">
+        <input id="rModelId" class="field" placeholder="모델 ID (가비아는 점 표기: claude-sonnet-4.6)">
         <select id="rKind" class="field">
           <option value="chat">대화(텍스트)</option>
           <option value="image">이미지 생성</option>
@@ -2931,25 +2946,69 @@ async function loadRoutesTab(){
       <div style="font:400 10px/1.5 var(--font-sans); color:var(--fg-3); margin-bottom:10px;">· 이미지 생성은 프로바이더가 이미지 모델을 제공해야 동작합니다(OpenAI 호환 /v1/images 또는 Gemini 이미지 모델). 모델 ID에 이미지 모델명을 넣으세요.</div>
       <button class="primary-btn" style="padding:8px 16px; font-size:12px; border-radius:9px;" onclick="createRoute()">추가</button>
     </div>
+    <div style="display:grid; grid-template-columns:100px 1fr 120px 1fr 92px 100px auto; gap:7px; padding:0 4px 6px; font:600 9.5px/1.3 var(--font-sans); color:var(--fg-3);">
+      <div>모델 키</div><div>표시 이름</div><div>프로바이더</div><div>모델 ID</div><div>용도</div><div>최소 역할</div><div></div>
+    </div>
     <div style="display:flex; flex-direction:column; gap:7px;">
       ${routes.map(r=>`
-        <div class="row-card" data-rid="${r.id}" data-enabled="${r.enabled?'1':'0'}" style="display:grid; grid-template-columns:100px 1fr 120px 1fr 92px 100px auto; gap:7px; align-items:center; opacity:${r.enabled?'1':'0.55'};">
+        <div class="row-card" data-rid="${r.id}" data-enabled="${r.enabled?'1':'0'}" style="opacity:${r.enabled?'1':'0.55'};">
+        <div style="display:grid; grid-template-columns:100px 1fr 120px 1fr 92px 100px auto; gap:7px; align-items:center;">
           <div style="min-width:0;">
             <div style="font:600 12px/1.2 var(--font-sans); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.key)}${r.kind==='image'?' 🎨':''}</div>
             <div style="font:400 9.5px/1.4 var(--font-sans); color:var(--fg-3);">#${r.id}</div>
           </div>
           <input class="field rt-label" style="padding:7px 10px; font-size:12px;" value="${esc(r.label)}">
           <select class="field rt-provider" style="padding:7px 8px; font-size:11.5px;">${provOpts(r.provider)}</select>
-          <input class="field rt-model" style="padding:7px 10px; font-size:11.5px; font-family:'JetBrains Mono',monospace;" value="${esc(r.provider_model_id)}">
+          <input class="field rt-model" style="padding:7px 10px; font-size:11.5px; font-family:'JetBrains Mono',monospace;" value="${esc(r.provider_model_id)}" placeholder="예: claude-sonnet-4.6">
           <select class="field rt-kind" style="padding:7px 8px; font-size:11px;"><option value="chat" ${r.kind!=='image'?'selected':''}>대화</option><option value="image" ${r.kind==='image'?'selected':''}>이미지</option></select>
           <select class="field rt-role" style="padding:7px 8px; font-size:11.5px;">${roleOptionsHTML(r.min_role, null)}</select>
           <div style="display:flex; gap:5px;">
+            <button class="sm-btn" style="border-color:rgba(96,165,250,0.5); color:#93c5fd;" onclick="testRoute(${r.id},this)">🔌 테스트</button>
             <button class="sm-btn" style="border-color:rgba(255,122,77,0.4); color:var(--accent);" onclick="saveRoute(${r.id},${r.sort},'${esc(jsq(r.description||''))}')">저장</button>
             <button class="sm-btn" style="border-color:rgba(234,179,8,0.5); color:#fcd34d;" onclick="toggleRoute(${r.id},${r.enabled?'false':'true'},${r.sort})">${r.enabled?'끄기':'켜기'}</button>
             <button class="sm-btn" style="border-color:rgba(239,68,68,0.4); color:#fca5a5;" onclick="deleteRoute(${r.id})">삭제</button>
           </div>
+        </div>
+        <div class="rt-result" style="display:none; margin-top:8px; padding:8px 11px; border-radius:9px; font:500 11px/1.5 var(--font-sans);"></div>
         </div>`).join('')}
     </div>`;
+}
+async function testRoute(id, btn){
+  const row=document.querySelector(`[data-rid="${id}"]`);
+  const box=row.querySelector('.rt-result');
+  const body={
+    provider:row.querySelector('.rt-provider').value,
+    provider_model_id:row.querySelector('.rt-model').value,
+    kind:row.querySelector('.rt-kind').value,
+  };
+  const old=btn.textContent; btn.disabled=true; btn.textContent='테스트 중…';
+  box.style.display='block';
+  box.style.background='rgba(148,163,184,.12)'; box.style.color='var(--fg-2)';
+  box.textContent='호출 중… (실제로 이 모델에 작은 요청을 보냅니다)';
+  try{
+    const r=await api('POST','/settings/model-routes/'+id+'/test', body);
+    if(r.ok){
+      box.style.background='rgba(52,211,153,.12)'; box.style.color='#6ee7b7';
+      box.textContent='✅ '+r.message;
+    }else{
+      box.style.background='rgba(248,113,113,.12)'; box.style.color='#fca5a5';
+      box.innerHTML='❌ '+esc(r.message||'실패')+_routeHint(r.message||'');
+    }
+  }catch(e){
+    box.style.background='rgba(248,113,113,.12)'; box.style.color='#fca5a5';
+    box.textContent='❌ '+(e.message||'테스트 실패');
+  }finally{ btn.disabled=false; btn.textContent=old; }
+}
+/* 흔한 오류에 대한 해결 힌트(가비아 특화) */
+function _routeHint(msg){
+  const m=String(msg||'');
+  if(/only access models|not allowed to access|권한/i.test(m))
+    return '<div style="margin-top:5px; color:var(--fg-3);">→ 가비아 콘솔에서 이 API 키 프로젝트에 해당 모델 <b>접근 권한</b>을 켜주세요.</div>';
+  if(/not found|허용되지 않은 모델|unknown model|does not exist|invalid model/i.test(m))
+    return '<div style="margin-top:5px; color:var(--fg-3);">→ 모델 ID 표기를 확인하세요. 가비아는 <b>점 표기</b>(예: claude-sonnet-4.6, claude-opus-4.6).</div>';
+  if(/401|API 키|api key|unauthorized/i.test(m))
+    return '<div style="margin-top:5px; color:var(--fg-3);">→ 이 프로바이더의 <b>API 키</b>가 등록·활성 상태인지 확인하세요(관리자 패널 > API 키).</div>';
+  return '';
 }
 function _routeRowPayload(id, sort, desc){
   const row=document.querySelector(`[data-rid="${id}"]`);
