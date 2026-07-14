@@ -130,7 +130,8 @@ async def preview_file(
         import fitz  # PyMuPDF
         doc = fitz.open(path)
         try:
-            idx = min(max(page - 1, 0), doc.page_count - 1)
+            total_pages = doc.page_count
+            idx = min(max(page - 1, 0), total_pages - 1)
             png = doc[idx].get_pixmap(dpi=130).tobytes("png")
         finally:
             doc.close()
@@ -139,7 +140,9 @@ async def preview_file(
     except Exception:
         raise HTTPException(status_code=500, detail="미리보기를 만들 수 없습니다")
     return Response(content=png, media_type="image/png",
-                    headers={"Cache-Control": "private, max-age=300"})
+                    headers={"Cache-Control": "private, max-age=300",
+                             "X-Total-Pages": str(total_pages),
+                             "Access-Control-Expose-Headers": "X-Total-Pages"})
 
 
 @router.delete("/{att_id}")
