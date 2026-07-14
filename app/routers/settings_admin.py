@@ -1,6 +1,7 @@
 """관리자 설정 라우터: 모델 라우팅 / 외부 연동 / 스킬 (관리자 이상)."""
 import json
 import re
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
 from app.dependencies import get_admin_user
-from app.models import User, ModelRoute, Integration, Skill
-from app.providers import PROVIDERS, run_chat, run_image, friendly_api_error
+from app.models import User, ModelRoute, Integration, Skill, UsageLog
+from app.providers import PROVIDERS, IMAGE_PROVIDERS, run_chat, resolve_credentials, friendly_api_error
 from app.roles import ROLE_LEVELS, ROLE_LABELS_KO
 from app.skills_runtime import parse_params_schema, _validate_public_host
 from app.schemas import (
@@ -159,15 +160,21 @@ class RouteTestBody(BaseModel):
     kind: str | None = None
 
 
+# 테스트 남용(유료 호출 반복) 방지용 사용자별 쿨다운. 프로세스 로컬 소프트 가드.
+_TEST_COOLDOWN_S = 2.0
+_last_route_test: dict[int, float] = {}
+
+
 @router.post("/model-routes/{route_id}/test")
 async def test_model_route(
     route_id: int,
     body: RouteTestBody,
-    _: User = Depends(get_admin_user),
+    current_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """이 모델 라우팅이 실제로 호출되는지 작은 요청으로 확인. 성공/실패와 프로바이더 원문
-    오류를 그대로 돌려줘서, 키·모델ID·권한 문제를 관리자 화면에서 바로 진단하게 한다."""
+    오류를 그대로 돌려줘서, 키·모델ID·권한 문제를 관리자 화면에서 바로 진단하게 한다.
+    유료 호출이므로 짧은 쿨다운을 두고, 결과를 감사 로그(action=test)에 남긴다."""
     route = (await db.execute(select(ModelRoute).where(ModelRoute.id == route_id))).scalar_one_or_none()
     if not route:
         raise HTTPException(status_code=404, detail="라우팅을 찾을 수 없습니다")
@@ -176,27 +183,50 @@ async def test_model_route(
     kind = (body.kind or route.kind or "chat").strip()
     if not provider or not model_id:
         return {"ok": False, "message": "프로바이더와 모델 ID를 먼저 입력하세요."}
-    import time as _t
-    started = _t.monotonic()
+
+    now = time.monotonic()
+    last = _last_route_test.get(current_user.id, 0.0)
+    if now - last < _TEST_COOLDOWN_S:
+        return {"ok": False, "message": "너무 자주 테스트했습니다. 잠시 후 다시 시도하세요."}
+    _last_route_test[current_user.id] = now
+
+    started = now
+    ok = False
+    in_tok = out_tok = None
     try:
         if kind == "image":
-            imgs = await run_image(db, provider, model_id, "test", size="512x512")
-            ok = bool(imgs)
-            note = f"이미지 {len(imgs)}장 생성됨" if ok else "이미지가 반환되지 않음"
+            # 실제 이미지 생성은 매 클릭 과금되므로, 여기선 지원 여부와 키만 확인(생성 생략).
+            if provider not in IMAGE_PROVIDERS:
+                ok, note = False, "이 프로바이더는 이미지 생성을 지원하지 않습니다"
+            else:
+                await resolve_credentials(db, provider)   # 키 없으면 HTTPException
+                ok, note = True, "이미지 지원 · 키 확인됨 (실제 생성은 비용 발생으로 생략)"
         else:
             messages = [{"role": "user", "content": "연결 테스트입니다. '연결됨'이라고만 답하세요."}]
             outcome = await run_chat(db, provider, model_id, None, messages, None)
             ok = True
-            reply = (getattr(outcome, "content", "") or "").strip().replace("\n", " ")
+            in_tok, out_tok = outcome.input_tokens, outcome.output_tokens
+            reply = (getattr(outcome, "text", "") or "").strip().replace("\n", " ")
             note = f"응답: {reply[:40]}" if reply else "응답 수신"
-        ms = int((_t.monotonic() - started) * 1000)
-        return {"ok": ok, "message": f"연결 성공 · {note} ({ms}ms)",
-                "provider": provider, "model_id": model_id}
+        ms = int((time.monotonic() - started) * 1000)
+        result = {"ok": ok, "message": f"연결 {'성공' if ok else '확인'} · {note} ({ms}ms)",
+                  "provider": provider, "model_id": model_id}
+        detail = note
+        status = "success" if ok else "error"
     except HTTPException as e:
-        # 키 미등록·프로바이더 미지원 등(resolve_credentials 등에서 발생)
-        return {"ok": False, "message": str(e.detail), "provider": provider, "model_id": model_id}
+        result = {"ok": False, "message": str(e.detail), "provider": provider, "model_id": model_id}
+        detail, status = str(e.detail), "error"
     except Exception as e:  # noqa: BLE001 — 프로바이더 원문 오류를 그대로 노출(진단용)
-        return {"ok": False, "message": friendly_api_error(e), "provider": provider, "model_id": model_id}
+        result = {"ok": False, "message": friendly_api_error(e), "provider": provider, "model_id": model_id}
+        detail, status = friendly_api_error(e), "error"
+
+    # 유료 호출이므로 감사 로그에 남긴다(사용량/비용 추적 가능하게).
+    db.add(UsageLog(user_id=current_user.id, username=current_user.username, action="test",
+                    model=model_id, provider=provider, input_tokens=in_tok, output_tokens=out_tok,
+                    status=status, detail=(detail or "")[:500],
+                    duration_ms=int((time.monotonic() - started) * 1000)))
+    await db.commit()
+    return result
 
 
 # ================= 연동 =================
