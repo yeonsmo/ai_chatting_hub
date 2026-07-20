@@ -77,23 +77,39 @@ async def main():
     if not API_KEY:
         sys.exit("환경변수 GABIA_API_KEY를 설정하세요.")
     client = AsyncOpenAI(api_key=API_KEY, base_url=f"{BASE_URL}/v1", timeout=TIMEOUT)
+    try:
+        print(f"[1/3] /v1/models 조회 → {BASE_URL}/v1/models")
+        raw = set()
+        page = await client.models.list()
+        while page is not None:                      # 페이지네이션까지 따라가 전체 수집
+            for m in (getattr(page, "data", None) or []):
+                if getattr(m, "id", None):
+                    raw.add(str(m.id))
+            has_next = getattr(page, "has_next_page", None)
+            try:
+                if callable(has_next) and has_next():
+                    page = await page.get_next_page()
+                    continue
+            except Exception:
+                pass
+            break
+        ids = sorted(raw)
+        print(f"      노출 모델 {len(ids)}개")
 
-    print(f"[1/3] /v1/models 조회 → {BASE_URL}/v1/models")
-    page = await client.models.list()
-    ids = sorted({str(getattr(m, "id", "")) for m in (getattr(page, "data", None) or []) if getattr(m, "id", None)})
-    print(f"      노출 모델 {len(ids)}개")
+        candidates = [m for m in ids if not looks_non_chat(m)][:MAX_PROBE]
+        skipped = [m for m in ids if looks_non_chat(m)]
+        print(f"[2/3] 대화 모델 후보 {len(candidates)}개 검증(동시 {CONCURRENCY}) · 비대화 제외 {len(skipped)}개")
 
-    candidates = [m for m in ids if not looks_non_chat(m)][:MAX_PROBE]
-    skipped = [m for m in ids if looks_non_chat(m)]
-    print(f"[2/3] 대화 모델 후보 {len(candidates)}개 검증(동시 {CONCURRENCY}) · 비대화 제외 {len(skipped)}개")
+        sem = asyncio.Semaphore(CONCURRENCY)
 
-    sem = asyncio.Semaphore(CONCURRENCY)
+        async def _one(mid):
+            async with sem:
+                return await probe(client, mid)
 
-    async def _one(mid):
-        async with sem:
-            return await probe(client, mid)
-
-    results = await asyncio.gather(*[_one(m) for m in candidates])
+        results = await asyncio.gather(*[_one(m) for m in candidates], return_exceptions=True)
+    finally:
+        await client.close()
+    results = [r if not isinstance(r, Exception) else ("?", False, f"검증 오류: {r}") for r in results]
     working = sorted([(m, n) for m, ok, n in results if ok])
     failed = sorted([(m, n) for m, ok, n in results if not ok])
 

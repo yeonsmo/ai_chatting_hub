@@ -3145,16 +3145,18 @@ async function deleteRoute(id){
 }
 async function discoverGabia(btn){
   if(!await openConfirm('가비아가 노출하는 모델 전체를 불러와 각각 실제로 호출해 검증하고, 되는 모델을 자동 등록합니다.\n\n검증은 모델마다 최소 1회씩 실제(유료) 호출을 합니다. 진행할까요?')) return;
+  // 활성 여부 선택: 확인=지금 모두에게 활성 / 취소=비활성으로 등록(관리자 검토 후 켜기)
+  const enableNow=await openConfirm('등록된 모델을 지금 바로 모든 사용자에게 활성화할까요?\n\n[확인] 즉시 사용 가능(비싼 모델 포함)\n[취소] 비활성으로 등록 → 라우팅 목록에서 검토 후 개별 활성');
   const box=document.getElementById('discoverResult');
   const old=btn.textContent; btn.disabled=true; btn.textContent='검증 중… (수십 초)';
   box.style.display='block'; box.style.background='rgba(96,165,250,0.12)'; box.style.color='#bfdbfe';
   box.innerHTML='<span class="spinner" style="display:inline-block; vertical-align:-2px;"></span> 가비아 /v1/models 조회 후 모델별 검증 중입니다…';
   try{
-    const r=await api('POST','/settings/model-routes/discover',{provider:'gabia',probe:true,auto_register:true});
+    const r=await api('POST','/settings/model-routes/discover',{provider:'gabia',probe:true,auto_register:true,enabled:enableNow});
     const added=(r.added||[]), failed=(r.failed||[]), already=(r.already_registered||[]);
     box.style.background='rgba(34,197,94,0.12)'; box.style.color='#bbf7d0';
     let html=`<b>✅ ${esc(r.message||'완료')}</b>`;
-    if(added.length) html+=`<div style="margin-top:7px; color:#86efac;">신규 등록 ${added.length}개: `+added.map(a=>`<span style="font-family:monospace;">${esc(a.model_id)}</span>`).join(', ')+`</div>`;
+    if(added.length) html+=`<div style="margin-top:7px; color:#86efac;">신규 등록 ${added.length}개 ${enableNow?'(활성)':'<span style="color:#fcd34d;">(비활성 — 목록에서 검토 후 켜기)</span>'}: `+added.map(a=>`<span style="font-family:monospace;">${esc(a.model_id)}</span>`).join(', ')+`</div>`;
     if(already.length) html+=`<div style="margin-top:5px; color:var(--fg-3);">이미 등록됨 ${already.length}개(건너뜀)</div>`;
     if(failed.length) html+=`<details style="margin-top:6px;"><summary style="cursor:pointer; color:#fca5a5;">❌ 검증 실패 ${failed.length}개(권한 없음·미지원 등) — 펼치기</summary><div style="margin-top:5px; color:var(--fg-3); font-family:monospace; font-size:10.5px; line-height:1.7;">`+failed.map(f=>`${esc(f.id)} → ${esc(f.note)}`).join('<br>')+`</div></details>`;
     if(added.length) html+=`<div style="margin-top:8px;"><button class="sm-btn" style="border-color:rgba(255,122,77,0.4); color:var(--accent);" onclick="loadRoutesTab()">목록 새로고침 ↻</button></div>`;

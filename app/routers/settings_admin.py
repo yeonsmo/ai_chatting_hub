@@ -13,7 +13,7 @@ from app.dependencies import get_admin_user
 from app.models import User, ModelRoute, Integration, Skill, UsageLog
 from app.providers import (
     PROVIDERS, IMAGE_PROVIDERS, OPENAI_FAMILY, run_chat, resolve_credentials,
-    friendly_api_error, list_provider_models, probe_openai_model,
+    friendly_api_error, open_openai_client, list_models_with_client, probe_openai_model,
 )
 from app.roles import ROLE_LEVELS, ROLE_LABELS_KO
 from app.skills_runtime import parse_params_schema, _validate_public_host
@@ -239,11 +239,13 @@ class DiscoverBody(BaseModel):
     provider: str = "gabia"     # OpenAI 호환 프로바이더만(gabia/openai/azure)
     probe: bool = True          # 각 모델을 최소요청으로 실사용 검증(권장)
     auto_register: bool = True  # 검증 통과분을 라우팅에 자동 등록
-    max_probe: int = 80         # 과금 폭주 방지 상한(검증 대상 개수)
+    max_probe: int = 80         # 과금 폭주 방지 상한(검증 대상 개수, 서버가 1~MAX로 조임)
     min_role: str = "user"      # 자동 등록 시 최소 권한
+    enabled: bool = True        # 자동 등록 모델을 즉시 활성화할지(끄면 관리자 검토 후 수동 활성)
 
 
 _DISCOVER_COOLDOWN_S = 15.0
+_DISCOVER_MAX_PROBE = 200       # 한 번의 자동조회가 검증할 수 있는 모델 수 하드 상한(비용 폭주 차단)
 _last_discover: dict[int, float] = {}
 _PROBE_CONCURRENCY = 4
 # 대화 모델이 아닌 게 명백한 접미/키워드(임베딩·음성·이미지·리랭커 등)는 검증 없이 건너뛴다.
@@ -290,45 +292,60 @@ async def discover_provider_models(
         raise HTTPException(status_code=429, detail="잠시 후 다시 시도하세요(자동조회 쿨다운).")
     _last_discover[current_user.id] = now
 
-    # 자격증명 1회 확인(키 없으면 여기서 명확히 실패) + 전체 모델 목록 1회 조회
-    key, extra = await resolve_credentials(db, provider)
+    # 검증 대상 수를 하드 상한으로 조인다(관리자가 큰 값을 넣어도 비용 폭주 불가).
+    max_probe = max(1, min(int(body.max_probe or 0), _DISCOVER_MAX_PROBE))
+
+    # 클라이언트 1개를 자격증명 1회 resolve로 만들어 목록조회+전체검증에 공유(누수·중복조회 방지).
+    client = await open_openai_client(db, provider)
     try:
-        all_ids = await list_provider_models(db, provider)
-    except HTTPException:
-        raise
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"모델 목록 조회 실패: {friendly_api_error(e)}")
+        try:
+            all_ids = await list_models_with_client(client)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"모델 목록 조회 실패: {friendly_api_error(e)}")
 
-    # 기존 라우팅(중복 방지용): 이 프로바이더에 이미 등록된 모델ID / 전체 키 집합
-    rows = (await db.execute(select(ModelRoute))).scalars().all()
-    existing_ids = {r.provider_model_id for r in rows if r.provider == provider}
-    taken_keys = {r.key for r in rows}
-    max_sort = max([r.sort for r in rows], default=0)
+        # 기존 라우팅(중복 방지용): 이 프로바이더에 이미 등록된 모델ID / 전체 키 집합
+        rows = (await db.execute(select(ModelRoute))).scalars().all()
+        existing_ids = {r.provider_model_id for r in rows if r.provider == provider}
+        taken_keys = {r.key for r in rows}
+        max_sort = max([r.sort for r in rows], default=0)
 
-    # 검증 후보: 이미 등록된 것/비대화 힌트 제외
-    candidates = [m for m in all_ids if m not in existing_ids and not _looks_non_chat(m)]
-    skipped_noncat = [m for m in all_ids if _looks_non_chat(m) and m not in existing_ids]
-    over_limit = candidates[body.max_probe:] if len(candidates) > body.max_probe else []
-    candidates = candidates[:body.max_probe]
+        # 검증 후보: 이미 등록된 것/비대화 힌트 제외
+        candidates = [m for m in all_ids if m not in existing_ids and not _looks_non_chat(m)]
+        skipped_noncat = [m for m in all_ids if _looks_non_chat(m) and m not in existing_ids]
+        over_limit = candidates[max_probe:]
+        candidates = candidates[:max_probe]
 
-    working: list[tuple[str, str]] = []   # (model_id, note)
-    failed: list[dict] = []
+        working: list[tuple[str, str]] = []   # (model_id, note)
+        failed: list[dict] = []
 
-    if body.probe:
-        sem = asyncio.Semaphore(_PROBE_CONCURRENCY)
+        if body.probe:
+            sem = asyncio.Semaphore(_PROBE_CONCURRENCY)
 
-        async def _probe(mid):
-            async with sem:
-                ok, note = await probe_openai_model(provider, key, extra, mid)
-                return mid, ok, note
+            async def _probe(mid):
+                async with sem:
+                    ok, note = await probe_openai_model(client, mid)
+                    return mid, ok, note
 
-        for mid, ok, note in await asyncio.gather(*[_probe(m) for m in candidates]):
-            (working if ok else failed).append((mid, note) if ok else {"id": mid, "note": note})
-    else:
-        # 검증 생략 모드: 후보 전체를 '등록 대상'으로 간주(사용자가 나중에 개별 테스트)
-        working = [(m, "검증 생략") for m in candidates]
+            # return_exceptions=True: 한 모델의 예기치 못한 오류가 배치 전체(이미 과금된 결과 포함)를 무효화하지 않게.
+            for mid, res in zip(candidates,
+                                await asyncio.gather(*[_probe(m) for m in candidates], return_exceptions=True)):
+                if isinstance(res, Exception):
+                    failed.append({"id": mid, "note": f"검증 오류: {str(res)[:120]}"})
+                    continue
+                _mid, ok, note = res
+                (working.append((_mid, note)) if ok else failed.append({"id": _mid, "note": note}))
+        else:
+            # 검증 생략 모드: 후보 전체를 '등록 대상'으로 간주(사용자가 나중에 개별 테스트)
+            working = [(m, "검증 생략") for m in candidates]
+    finally:
+        try:
+            await client.close()
+        except Exception:  # noqa: BLE001
+            pass
 
-    # 검증 통과분 자동 등록
+    # 검증 통과분 자동 등록(활성 여부는 body.enabled로 제어 — 끄면 관리자 검토 후 수동 활성)
     added = []
     if body.auto_register and working:
         for mid, note in sorted(working):
@@ -338,10 +355,12 @@ async def discover_provider_models(
                 key=k[:80], label=mid[:120], provider=provider,
                 provider_model_id=mid[:200], kind="chat",
                 description="자동 등록(가비아 검증됨)"[:200],
-                min_role=body.min_role, enabled=True, sort=max_sort,
+                min_role=body.min_role, enabled=bool(body.enabled), sort=max_sort,
             ))
             added.append({"key": k, "model_id": mid, "note": note})
-        # 감사 로그(요약 1건)
+
+    # 감사 로그: 유료 호출(probe)을 했거나 라우팅을 추가했으면 항상 남긴다(비용 추적 구멍 방지).
+    if added or (body.probe and candidates):
         db.add(UsageLog(user_id=current_user.id, username=current_user.username, action="discover",
                         model=f"{len(added)}개 등록", provider=provider, status="success",
                         detail=(f"목록 {len(all_ids)} · 검증 {len(candidates)} · "
