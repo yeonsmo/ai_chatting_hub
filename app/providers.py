@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app import dlp
 from app.models import APIKey
 
 MAX_TOKENS = 4096
@@ -352,6 +353,9 @@ async def run_chat(db: AsyncSession, provider: str, model_id: str,
                    tool_ctx: ToolContext | None) -> ChatOutcome:
     """messages는 프로바이더 계열에 맞는 형식으로 전달한다
     (ANTHROPIC_FAMILY → anthropic 블록 형식, 그 외 → OpenAI chat 형식)."""
+    if settings.dlp_model_egress:   # 외부 모델로 나가기 전 민감정보 마스킹
+        system_prompt = dlp.scrub_text(system_prompt)
+        messages = dlp.scrub_messages(messages)
     key, extra = await resolve_credentials(db, provider)
 
     if provider in ANTHROPIC_FAMILY:
@@ -521,6 +525,9 @@ async def run_chat_stream(db: AsyncSession, provider: str, model_id: str,
                           system_prompt: str | None, messages: list,
                           tool_ctx: ToolContext | None):
     """run_chat의 스트리밍 버전. 이벤트 튜플을 async yield 한다."""
+    if settings.dlp_model_egress:   # 외부 모델로 나가기 전 민감정보 마스킹
+        system_prompt = dlp.scrub_text(system_prompt)
+        messages = dlp.scrub_messages(messages)
     key, extra = await resolve_credentials(db, provider)
     if provider in ANTHROPIC_FAMILY:
         async for ev in _stream_anthropic(provider, model_id, key, extra, system_prompt, messages, tool_ctx):
@@ -789,6 +796,8 @@ async def run_image(db: AsyncSession, provider: str, model_id: str, prompt: str,
                     size: str = "1024x1024") -> list[GeneratedImage]:
     if provider not in IMAGE_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"{provider}는 이미지 생성을 지원하지 않습니다.")
+    if settings.dlp_model_egress:
+        prompt = dlp.scrub_text(prompt)
     key, extra = await resolve_credentials(db, provider)
     if provider == "gemini":
         images = await _run_gemini_image(model_id, key, prompt)

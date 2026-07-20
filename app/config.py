@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     # 기본값은 사내 도메인만. 비우면 모든 사설 대역 차단(가장 안전).
     skill_internal_allowed_hosts: str = "*.hpengineeringwork.com"
 
+    # DLP(유출방지) — 나가는 내용의 민감정보 마스킹.
+    # dlp_model_egress: 외부 AI로 보내는 대화 마스킹(켜면 AI가 실제 번호를 못 봐 서식 자동작성에 영향 → 기본 off).
+    # dlp_skill_egress: 회사 도메인이 아닌 외부 API(스킬)로 보내는 값 마스킹(서식과 무관 → 기본 on).
+    dlp_model_egress: bool = False
+    dlp_skill_egress: bool = True
+    dlp_categories: str = "rrn,card,account,bizno,phone"  # 마스킹 카테고리(콤마)
+
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
