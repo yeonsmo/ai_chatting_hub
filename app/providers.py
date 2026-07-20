@@ -184,7 +184,10 @@ async def _run_anthropic(provider: str, model_id: str, key: str, extra: dict,
         in_tok += getattr(usage, "input_tokens", 0) or 0
         out_tok += getattr(usage, "output_tokens", 0) or 0
 
-        kwargs["messages"].append({"role": "assistant", "content": _anthropic_assistant_content(response.content)})
+        asst = {"role": "assistant", "content": _anthropic_assistant_content(response.content)}
+        if settings.dlp_model_egress:   # 모델 tool_use 인자에 담긴 민감정보 마스킹
+            asst["content"] = dlp.scrub_content_blocks(asst["content"])
+        kwargs["messages"].append(asst)
         tool_results = []
         for block in response.content:
             if getattr(block, "type", "") != "tool_use":
@@ -198,6 +201,8 @@ async def _run_anthropic(provider: str, model_id: str, key: str, extra: dict,
                 outcome.used_skills.append(SkillCall(name=name, title=tool_ctx.titles.get(name, name),
                                                      status="error", detail=str(e)[:200]))
             tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text[:20000]})
+        if settings.dlp_model_egress:   # 스킬 결과(tool_result)에 담긴 민감정보 마스킹
+            tool_results = dlp.scrub_content_blocks(tool_results)
         kwargs["messages"].append({"role": "user", "content": tool_results})
         response = await client.messages.create(**kwargs)
 
@@ -265,7 +270,10 @@ async def _run_openai(provider: str, model_id: str, key: str, extra: dict,
         in_tok += getattr(usage, "prompt_tokens", 0) or 0
         out_tok += getattr(usage, "completion_tokens", 0) or 0
 
-        full.append(message.model_dump(exclude_none=True))
+        asst_msg = message.model_dump(exclude_none=True)
+        if settings.dlp_model_egress:   # 모델 tool_calls 인자에 담긴 민감정보 마스킹
+            asst_msg = dlp.scrub_openai_messages([asst_msg])[0]
+        full.append(asst_msg)
         for tc in tool_calls:
             name = tc.function.name
             try:
@@ -279,6 +287,8 @@ async def _run_openai(provider: str, model_id: str, key: str, extra: dict,
                 result_text = f"오류: {str(e)[:300]}"
                 outcome.used_skills.append(SkillCall(name=name, title=tool_ctx.titles.get(name, name),
                                                      status="error", detail=str(e)[:200]))
+            if settings.dlp_model_egress:   # 스킬 결과(tool 메시지)에 담긴 민감정보 마스킹
+                result_text = dlp.scrub_text(result_text)
             full.append({"role": "tool", "tool_call_id": tc.id, "content": result_text[:20000]})
         response = await _openai_create(client, model_id, full, tools)
 
@@ -401,7 +411,10 @@ async def _stream_anthropic(provider, model_id, key, extra, system_prompt, messa
         out_tok += getattr(usage, "output_tokens", 0) or 0
         if getattr(final, "stop_reason", None) == "tool_use" and tool_ctx and rounds < MAX_TOOL_ROUNDS:
             rounds += 1
-            kwargs["messages"].append({"role": "assistant", "content": _anthropic_assistant_content(final.content)})
+            asst = {"role": "assistant", "content": _anthropic_assistant_content(final.content)}
+            if settings.dlp_model_egress:   # 모델 tool_use 인자 마스킹
+                asst["content"] = dlp.scrub_content_blocks(asst["content"])
+            kwargs["messages"].append(asst)
             tool_results = []
             for block in final.content:
                 if getattr(block, "type", "") != "tool_use":
@@ -417,6 +430,8 @@ async def _stream_anthropic(provider, model_id, key, extra, system_prompt, messa
                 outcome.used_skills.append(sc)
                 yield ("skill", sc)
                 tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text[:20000]})
+            if settings.dlp_model_egress:   # 스킬 결과(tool_result) 마스킹
+                tool_results = dlp.scrub_content_blocks(tool_results)
             kwargs["messages"].append({"role": "user", "content": tool_results})
             continue
         break
@@ -489,13 +504,16 @@ async def _stream_openai(provider, model_id, key, extra, system_prompt, messages
                 finish = ch.finish_reason
         if finish == "tool_calls" and tools and tool_acc and rounds < MAX_TOOL_ROUNDS:
             rounds += 1
-            full.append({
+            asst_msg = {
                 "role": "assistant",
                 "content": "".join(content_parts) or None,
                 "tool_calls": [{"id": s["id"], "type": "function",
                                 "function": {"name": s["name"], "arguments": s["args"] or "{}"}}
                                for s in tool_acc.values()],
-            })
+            }
+            if settings.dlp_model_egress:   # 모델 tool_calls 인자 마스킹
+                asst_msg = dlp.scrub_openai_messages([asst_msg])[0]
+            full.append(asst_msg)
             for s in tool_acc.values():
                 name = s["name"]
                 yield ("tool", tool_ctx.titles.get(name, name))
@@ -511,6 +529,8 @@ async def _stream_openai(provider, model_id, key, extra, system_prompt, messages
                     sc = SkillCall(name=name, title=tool_ctx.titles.get(name, name), status="error", detail=str(e)[:200])
                 outcome.used_skills.append(sc)
                 yield ("skill", sc)
+                if settings.dlp_model_egress:   # 스킬 결과(tool 메시지) 마스킹
+                    result_text = dlp.scrub_text(result_text)
                 full.append({"role": "tool", "tool_call_id": s["id"], "content": result_text[:20000]})
             continue
         break
