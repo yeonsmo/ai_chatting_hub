@@ -124,30 +124,44 @@ def _empty_response_error():
 
 # ---------------- 모델 목록 조회 / 실사용 검증 (자동 등록용) ----------------
 
-async def list_provider_models(db: AsyncSession, provider: str) -> list[str]:
-    """OpenAI 호환 프로바이더(gabia/openai/azure)의 /v1/models 목록을 1회 호출로 가져와
-    모델 ID 목록(정렬·중복제거)을 반환. 가비아가 '실제 노출'하는 전체 카탈로그의 출처."""
+async def open_openai_client(db: AsyncSession, provider: str):
+    """OpenAI 호환 프로바이더(gabia/openai/azure)의 자격증명을 1회 resolve해 클라이언트를
+    만들어 반환한다(호출측이 반드시 close). 목록 조회·모델 검증에서 이 클라이언트 하나를
+    공유해 커넥션 누수와 자격증명 중복조회를 막는다."""
     if provider not in OPENAI_FAMILY:
         raise HTTPException(status_code=400,
                             detail="모델 목록 자동조회는 OpenAI 호환 프로바이더(가비아/OpenAI/Azure)만 지원합니다.")
     key, extra = await resolve_credentials(db, provider)
-    client = _make_openai_client(provider, key, extra)
-    page = await client.models.list()
+    return _make_openai_client(provider, key, extra)
+
+
+async def list_models_with_client(client) -> list[str]:
+    """주어진 클라이언트로 /v1/models 전체를 페이지네이션까지 따라가며 수집.
+    모델 ID 목록(정렬·중복제거)을 반환 — '실제 노출' 전체 카탈로그의 출처."""
     ids: list[str] = []
-    for m in getattr(page, "data", None) or []:
-        mid = getattr(m, "id", None)
-        if mid:
-            ids.append(str(mid))
+    page = await client.models.list()
+    while page is not None:
+        for m in getattr(page, "data", None) or []:
+            mid = getattr(m, "id", None)
+            if mid:
+                ids.append(str(mid))
+        # 다음 페이지가 있으면 따라간다(대부분의 /v1/models는 단일 페이지).
+        has_next = getattr(page, "has_next_page", None)
+        try:
+            if callable(has_next) and has_next():
+                page = await page.get_next_page()
+                continue
+        except Exception:  # noqa: BLE001 — 페이지네이션 미지원이면 단일 페이지로 종료
+            pass
+        break
     return sorted(set(ids))
 
 
-async def probe_openai_model(provider: str, key: str, extra: dict, model_id: str,
-                             timeout: float = 30.0) -> tuple[bool, str]:
-    """OpenAI 호환 모델이 최소 대화 요청에 응답하는지 검증(DB 불필요 → 동시 검증 안전).
+async def probe_openai_model(client, model_id: str, timeout: float = 30.0) -> tuple[bool, str]:
+    """공유 클라이언트로 모델이 최소 대화 요청에 응답하는지 검증(동시 검증 안전).
     성공하면 (True, 노트), 실패하면 (False, 사유). 임베딩/TTS/리랭커 등 비대화 모델은
     여기서 자연히 실패해 등록 대상에서 제외된다. max_completion_tokens 미지원 프록시는
     max_tokens로 재시도한다."""
-    client = _make_openai_client(provider, key, extra)
     msgs = [{"role": "user", "content": "connectivity check — reply with 'ok'."}]
 
     async def _call():
