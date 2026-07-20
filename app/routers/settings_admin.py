@@ -1,4 +1,5 @@
 """관리자 설정 라우터: 모델 라우팅 / 외부 연동 / 스킬 (관리자 이상)."""
+import asyncio
 import json
 import re
 import time
@@ -10,7 +11,10 @@ from sqlalchemy import select, func
 from app.database import get_db
 from app.dependencies import get_admin_user
 from app.models import User, ModelRoute, Integration, Skill, UsageLog
-from app.providers import PROVIDERS, IMAGE_PROVIDERS, run_chat, resolve_credentials, friendly_api_error
+from app.providers import (
+    PROVIDERS, IMAGE_PROVIDERS, OPENAI_FAMILY, run_chat, resolve_credentials,
+    friendly_api_error, list_provider_models, probe_openai_model,
+)
 from app.roles import ROLE_LEVELS, ROLE_LABELS_KO
 from app.skills_runtime import parse_params_schema, _validate_public_host
 from app.schemas import (
@@ -227,6 +231,137 @@ async def test_model_route(
                     duration_ms=int((time.monotonic() - started) * 1000)))
     await db.commit()
     return result
+
+
+# ---------------- 프로바이더 모델 자동 검증·등록(가비아 등 OpenAI 호환) ----------------
+
+class DiscoverBody(BaseModel):
+    provider: str = "gabia"     # OpenAI 호환 프로바이더만(gabia/openai/azure)
+    probe: bool = True          # 각 모델을 최소요청으로 실사용 검증(권장)
+    auto_register: bool = True  # 검증 통과분을 라우팅에 자동 등록
+    max_probe: int = 80         # 과금 폭주 방지 상한(검증 대상 개수)
+    min_role: str = "user"      # 자동 등록 시 최소 권한
+
+
+_DISCOVER_COOLDOWN_S = 15.0
+_last_discover: dict[int, float] = {}
+_PROBE_CONCURRENCY = 4
+# 대화 모델이 아닌 게 명백한 접미/키워드(임베딩·음성·이미지·리랭커 등)는 검증 없이 건너뛴다.
+_NON_CHAT_HINTS = ("embedding", "embed", "rerank", "reranker", "whisper", "tts", "audio",
+                   "moderation", "image", "vision-ocr", "dall-e", "stable-diffusion",
+                   "flux", "clip", "guard", "bge", "gte")
+
+
+def _looks_non_chat(model_id: str) -> bool:
+    m = model_id.lower()
+    return any(h in m for h in _NON_CHAT_HINTS)
+
+
+def _slug_key(model_id: str, taken: set[str]) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", model_id.lower()).strip("-")[:70] or "model"
+    key, i = base, 2
+    while key in taken:
+        key = f"{base[:66]}-{i}"
+        i += 1
+    taken.add(key)
+    return key
+
+
+@router.post("/model-routes/discover")
+async def discover_provider_models(
+    body: DiscoverBody,
+    current_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """가비아(OpenAI 호환) /v1/models를 호출해 '실제 노출되는 모델 전체'를 가져오고,
+    각 모델을 최소 요청으로 검증한 뒤 통과한 대화 모델을 라우팅에 자동 등록한다.
+    - 목록 조회 1회 + 검증 대상 수만큼의 최소 호출(상한 max_probe). 유료 호출이라 쿨다운.
+    - 임베딩/음성/이미지 등 비대화 모델은 접미 힌트로 사전 제외하고, 검증에서 실패해도 제외.
+    - 이미 등록된 모델ID는 건너뛴다(중복 방지)."""
+    provider = (body.provider or "gabia").strip()
+    if provider not in OPENAI_FAMILY:
+        raise HTTPException(status_code=400,
+                            detail="자동조회는 OpenAI 호환 프로바이더(가비아/OpenAI/Azure)만 지원합니다.")
+    _validate_role(body.min_role)
+
+    now = time.monotonic()
+    last = _last_discover.get(current_user.id, 0.0)
+    if now - last < _DISCOVER_COOLDOWN_S:
+        raise HTTPException(status_code=429, detail="잠시 후 다시 시도하세요(자동조회 쿨다운).")
+    _last_discover[current_user.id] = now
+
+    # 자격증명 1회 확인(키 없으면 여기서 명확히 실패) + 전체 모델 목록 1회 조회
+    key, extra = await resolve_credentials(db, provider)
+    try:
+        all_ids = await list_provider_models(db, provider)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"모델 목록 조회 실패: {friendly_api_error(e)}")
+
+    # 기존 라우팅(중복 방지용): 이 프로바이더에 이미 등록된 모델ID / 전체 키 집합
+    rows = (await db.execute(select(ModelRoute))).scalars().all()
+    existing_ids = {r.provider_model_id for r in rows if r.provider == provider}
+    taken_keys = {r.key for r in rows}
+    max_sort = max([r.sort for r in rows], default=0)
+
+    # 검증 후보: 이미 등록된 것/비대화 힌트 제외
+    candidates = [m for m in all_ids if m not in existing_ids and not _looks_non_chat(m)]
+    skipped_noncat = [m for m in all_ids if _looks_non_chat(m) and m not in existing_ids]
+    over_limit = candidates[body.max_probe:] if len(candidates) > body.max_probe else []
+    candidates = candidates[:body.max_probe]
+
+    working: list[tuple[str, str]] = []   # (model_id, note)
+    failed: list[dict] = []
+
+    if body.probe:
+        sem = asyncio.Semaphore(_PROBE_CONCURRENCY)
+
+        async def _probe(mid):
+            async with sem:
+                ok, note = await probe_openai_model(provider, key, extra, mid)
+                return mid, ok, note
+
+        for mid, ok, note in await asyncio.gather(*[_probe(m) for m in candidates]):
+            (working if ok else failed).append((mid, note) if ok else {"id": mid, "note": note})
+    else:
+        # 검증 생략 모드: 후보 전체를 '등록 대상'으로 간주(사용자가 나중에 개별 테스트)
+        working = [(m, "검증 생략") for m in candidates]
+
+    # 검증 통과분 자동 등록
+    added = []
+    if body.auto_register and working:
+        for mid, note in sorted(working):
+            max_sort += 1
+            k = _slug_key(mid, taken_keys)
+            db.add(ModelRoute(
+                key=k[:80], label=mid[:120], provider=provider,
+                provider_model_id=mid[:200], kind="chat",
+                description="자동 등록(가비아 검증됨)"[:200],
+                min_role=body.min_role, enabled=True, sort=max_sort,
+            ))
+            added.append({"key": k, "model_id": mid, "note": note})
+        # 감사 로그(요약 1건)
+        db.add(UsageLog(user_id=current_user.id, username=current_user.username, action="discover",
+                        model=f"{len(added)}개 등록", provider=provider, status="success",
+                        detail=(f"목록 {len(all_ids)} · 검증 {len(candidates)} · "
+                                f"성공 {len(working)} · 등록 {len(added)}")[:500]))
+        await db.commit()
+
+    return {
+        "ok": True,
+        "provider": provider,
+        "total_listed": len(all_ids),
+        "probed": len(candidates),
+        "working": len(working),
+        "added": added,
+        "already_registered": sorted(existing_ids & set(all_ids)),
+        "failed": failed,
+        "skipped_non_chat": sorted(skipped_noncat),
+        "skipped_over_limit": over_limit,
+        "message": (f"목록 {len(all_ids)}개 중 {len(candidates)}개 검증 → "
+                    f"{len(working)}개 사용 가능, {len(added)}개 신규 등록."),
+    }
 
 
 # ================= 연동 =================
