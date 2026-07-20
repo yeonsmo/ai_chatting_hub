@@ -12,6 +12,7 @@ from urllib.parse import urlparse, quote
 
 import httpx
 from app.config import settings
+from app import dlp
 from app.models import Integration, Skill
 
 RESULT_MAX_CHARS = 20_000
@@ -236,6 +237,11 @@ def _build_request(skill: Skill, integration: Integration, params: dict):
 
 
 async def execute_skill(skill: Skill, integration: Integration, params: dict) -> str:
+    # DLP: 회사 도메인이 아닌 '외부' API로 보내는 파라미터 값은 마스킹(사내 시스템은 실제 값 유지).
+    if settings.dlp_skill_egress:
+        host = (urlparse(integration.base_url).hostname or "")
+        if not dlp.is_company_host(host):
+            params = dlp.scrub_params(params)
     url, headers, query, body, sensitive_headers = _build_request(skill, integration, params)
     timeout = max(3, min(skill.timeout_s or 20, 60))
     origin_host = (urlparse(url).hostname or "").lower()
