@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     dlp_model_egress: bool = False
     dlp_skill_egress: bool = True
     dlp_categories: str = "rrn,card,account,bizno,phone"  # 마스킹 카테고리(콤마)
+    # 마스킹을 면제할 '회사(사내)' 도메인. 비우면 SKILL_INTERNAL_ALLOWED_HOSTS를 재사용.
+    # 스킬용 SSRF 허용목록과 DLP 면제 대상을 분리하고 싶을 때만 채운다(콤마, *.도메인/정확호스트).
+    dlp_company_hosts: str = ""
 
     @property
     def database_url(self) -> str:
