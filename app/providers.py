@@ -11,6 +11,7 @@ ModelRoute.provider 값에 따라 실제 호출처를 결정한다.
 새 프로바이더 추가: PROVIDERS에 등록하고 run_chat의 분기에 구현.
 스킬(tool) 지원: anthropic/bedrock은 tool-use, OpenAI 계열은 function-calling.
 """
+import asyncio
 import base64
 import json
 from dataclasses import dataclass, field
@@ -119,6 +120,58 @@ def friendly_api_error(e: Exception) -> str:
 
 def _empty_response_error():
     return HTTPException(status_code=502, detail="모델이 빈 응답을 반환했습니다. 다시 시도해주세요.")
+
+
+# ---------------- 모델 목록 조회 / 실사용 검증 (자동 등록용) ----------------
+
+async def list_provider_models(db: AsyncSession, provider: str) -> list[str]:
+    """OpenAI 호환 프로바이더(gabia/openai/azure)의 /v1/models 목록을 1회 호출로 가져와
+    모델 ID 목록(정렬·중복제거)을 반환. 가비아가 '실제 노출'하는 전체 카탈로그의 출처."""
+    if provider not in OPENAI_FAMILY:
+        raise HTTPException(status_code=400,
+                            detail="모델 목록 자동조회는 OpenAI 호환 프로바이더(가비아/OpenAI/Azure)만 지원합니다.")
+    key, extra = await resolve_credentials(db, provider)
+    client = _make_openai_client(provider, key, extra)
+    page = await client.models.list()
+    ids: list[str] = []
+    for m in getattr(page, "data", None) or []:
+        mid = getattr(m, "id", None)
+        if mid:
+            ids.append(str(mid))
+    return sorted(set(ids))
+
+
+async def probe_openai_model(provider: str, key: str, extra: dict, model_id: str,
+                             timeout: float = 30.0) -> tuple[bool, str]:
+    """OpenAI 호환 모델이 최소 대화 요청에 응답하는지 검증(DB 불필요 → 동시 검증 안전).
+    성공하면 (True, 노트), 실패하면 (False, 사유). 임베딩/TTS/리랭커 등 비대화 모델은
+    여기서 자연히 실패해 등록 대상에서 제외된다. max_completion_tokens 미지원 프록시는
+    max_tokens로 재시도한다."""
+    client = _make_openai_client(provider, key, extra)
+    msgs = [{"role": "user", "content": "connectivity check — reply with 'ok'."}]
+
+    async def _call():
+        try:
+            return await client.chat.completions.create(
+                model=model_id, messages=msgs, max_completion_tokens=16)
+        except openai.BadRequestError as e:
+            if "max_completion_tokens" not in str(e):
+                raise
+            return await client.chat.completions.create(
+                model=model_id, messages=msgs, max_tokens=16)
+
+    try:
+        resp = await asyncio.wait_for(_call(), timeout=timeout)
+        choice = resp.choices[0] if getattr(resp, "choices", None) else None
+        msg = getattr(choice, "message", None) if choice else None
+        reply = ((getattr(msg, "content", "") or "").strip().replace("\n", " ")) if msg else ""
+        return True, (f"응답: {reply[:30]}" if reply else "응답 수신")
+    except asyncio.TimeoutError:
+        return False, f"시간 초과({int(timeout)}s)"
+    except HTTPException as e:
+        return False, str(e.detail)[:160]
+    except Exception as e:  # noqa: BLE001 — 진단용으로 원문 사유 노출
+        return False, friendly_api_error(e)[:160]
 
 
 # ---------------- Anthropic 계열 (anthropic / bedrock) ----------------
